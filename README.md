@@ -1,6 +1,6 @@
 # rls_careermp
 
-## Welcomem to my conversion of RLS! This makes it possible to use RLS Career Overhall with StanleyDudek's CareerMP!!
+## Welcomem to my conversion of RLS! This makes it possible to use RLS Career Overhaul with StanleyDudek's CareerMP!!
 
 ## This is WIP so expect bugs, please report them here or in StanleyDudek's Discord.
 ## CareerMP is a dependency - https://github.com/StanleyDudek/CareerMP
