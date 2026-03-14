@@ -24,5 +24,5 @@ Text:
 ### Known Bugs
 1. Autosave lua error (safely ignore this just use manual save, CareerMP handles saves after jobs anyways)
 2. New joining players see players who are already in the server as Grey Orbs - Set your playerlist left click action to "Queue deleted vehicles" when ingame in Options/Multiplayer. Open the player list (add the ui app if not there) and click on the people who are orbs -- Side note, you have to remove the UI folder from within CareerMP :)
-3. Completing some jobs causes a player desync
-4. Reports of vehicles combusting when players buy them from dealers, havent seen this myself yet.
+3. Completing some jobs causes a player desync - im almost 100% ive found them all just hmu if it happens
+4. Reports of vehicles combusting when players buy them from dealers, havent seen this myself yet or had any more reports.
