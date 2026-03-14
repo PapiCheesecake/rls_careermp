@@ -10,6 +10,11 @@
 1. Download from the realeases the latest version. 
 3. Place the RLS_3.6.4_v(number) into your servers Resources/Client folder
 
+### Updating
+1. Remove old mod.zip
+2. Download and install new mod.zip
+3. Start Server
+
 ## Enjoy
 
 ### Known Bugs
