@@ -566,9 +566,9 @@ local uiCallbacks = {
     Contracts.completeContract(function(deleteTruck) 
       Manager.cleanupJob(deleteTruck, Config.STATE_IDLE)
       currentState = Config.STATE_IDLE
-      if career_career and career_career.isActive() and career_saveSystem then
-        career_saveSystem.saveCurrent()
-      end
+      -- if career_career and career_career.isActive() and career_saveSystem then
+      --   career_saveSystem.saveCurrent()
+      -- end
     end, Manager.clearProps)
   end,
   onLoadMore = function()
