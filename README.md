@@ -10,8 +10,14 @@
 1. Download from the realeases the latest version. 
 3. Place the RLS_3.6.4_v(number) into your servers Resources/Client folder
 
+### Updating
+1. Remove old mod.zip
+2. Download and install new mod.zip
+3. Start Server
+
 ## Enjoy
 
 ### Known Bugs
 1. Autosave lua error (safely ignore this just use manual save, CareerMP handles saves after jobs anyways)
 2. New joining players see players who are already in the server as Grey Orbs - Set your playerlist left click action to "Queue deleted vehicles" when ingame in Options/Multiplayer. Open the player list (add the ui app if not there) and click on the people who are orbs
+3. Reports of vehicles combusting when players buy them from dealers, havent seen this myself yet.
