@@ -6,7 +6,7 @@
 ## CareerMP is a dependency - https://github.com/StanleyDudek/CareerMP
 
 # Installation
-- Zeits Graphics are known for causing UI issues. If you're having UI issues... it's likely that.
+- Zeits Graphics are known for causing UI issues with CareerMP or RLS_MP. If you're having UI issues with either... it's likely that.
 ### Video:
 https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYsMjQxMzc2OTU&v=217
 ### Text:
