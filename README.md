@@ -5,16 +5,16 @@
 ## This is WIP so expect bugs, please report them here or in StanleyDudek's Discord.
 ## CareerMP is a dependency - https://github.com/StanleyDudek/CareerMP
 
-### Installation
-# Video:
+# Installation
+### Video:
 https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYsMjQxMzc2OTU&v=217
-# Text:
+### Text:
 1. Download and setup CareerMP on your BeamMP Server
 1. Download from the realeases the latest version. 
 3. Place the RLS_3.6.4_v(number) into your servers Resources/Client folder
 4. Optional - Remove the "ui" folder from CareerMP, this allows you to use BeamMPs feature for one of the known bugs bellow.
 
-### Updating
+# Updating
 1. Remove old mod.zip
 2. Download and install new mod.zip
 3. Start Server
