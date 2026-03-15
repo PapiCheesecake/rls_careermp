@@ -22,7 +22,7 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 
 # Joining
 1. Open BeamMP-Server (if your hosting)
-2. Open BeamMP-Client\
+2. Open BeamMP-Client
 3. Join the server, this creates a save for you. Same Goes for rejoining, it loads the save for you.
 
 ## Enjoy
