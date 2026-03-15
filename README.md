@@ -6,9 +6,9 @@
 ## CareerMP is a dependency - https://github.com/StanleyDudek/CareerMP
 
 ### Installation
-Video:
+# Video:
 https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYsMjQxMzc2OTU&v=217
-Text:
+# Text:
 1. Download and setup CareerMP on your BeamMP Server
 1. Download from the realeases the latest version. 
 3. Place the RLS_3.6.4_v(number) into your servers Resources/Client folder
