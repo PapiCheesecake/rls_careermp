@@ -2,7 +2,7 @@
 
 ## Welcome to my conversion of RLS! This makes it possible to use RLS Career Overhaul with StanleyDudek's CareerMP!!
 
-## This is WIP so expect bugs, please report them here or in StanleyDudek's Discord.
+## This is WIP so expect bugs and missing features, please report them here or in StanleyDudek's Discord.
 ## CareerMP is a dependency - https://github.com/StanleyDudek/CareerMP
 
 # Installation
@@ -24,6 +24,9 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 1. Open BeamMP-Server (if your hosting)
 2. Open BeamMP-Client
 3. Join the server, this creates a save for you. Same Goes for rejoining, it loads the save for you.
+
+# Saves
+- Be aware, this only uses the one save. Your BeamMP username. If you want to use a preexisting save, copy it and rename the save folder to your BeamMP username.
 
 ## Enjoy
 
