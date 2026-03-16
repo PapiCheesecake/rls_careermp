@@ -26,7 +26,9 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 3. Join the server, this creates a save for you. Same Goes for rejoining, it loads the save for you.
 
 # Saves
-- Be aware, this only uses the one save. Your BeamMP username. If you want to use a preexisting save, copy it and rename the save folder to your BeamMP username.
+- Be aware, this only uses the one save. Your BeamMP username. If you want to use a pre-existing save, copy it and rename the save folder to your BeamMP username.
+- A save will be auto created, or it will use the CareerMP save you used if thats there. Backup all saves prio to using this RLS Conversion.
+- Another note, DO NOT USE THE LOAD SAVE FEATURE. It does not work and can break saves
 
 ## Enjoy
 
@@ -34,4 +36,5 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 1. Autosave lua error (safely ignore this just use manual save, CareerMP handles saves after jobs anyways)
 2. New joining players see players who are already in the server as Grey Orbs - Set your playerlist left click action to "Queue deleted vehicles" when ingame in Options/Multiplayer. Open the player list (add the ui app if not there) and click on the people who are orbs -- Side note, you have to remove the UI folder from within CareerMP :)
 3. Completing some jobs causes a player desync - im almost 100% ive found them all just hmu if it happens
-4. Reports of vehicles combusting when players buy them from dealers, havent seen this myself yet or had any more reports.
+4. Police jobs are currently broke, do not attempt to use them
+5. Drag strip isnt functional - working on a fix
