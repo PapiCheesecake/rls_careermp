@@ -4,6 +4,7 @@
 
 ## This is WIP so expect bugs and missing features, please report them here or in StanleyDudek's Discord.
 ## CareerMP is a dependency - https://github.com/StanleyDudek/CareerMP
+- Last tested Version: CareerMP v0.0.16
 
 # Installation
 - Zeits Graphics are known for causing UI issues with CareerMP or RLS_MP. If you're having UI issues with either... it's likely that.
