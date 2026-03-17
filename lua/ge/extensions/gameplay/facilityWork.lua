@@ -1383,9 +1383,9 @@ local function endShiftCleanup()
                 tags = {"facilityWork", "gameplay"}
             }, true)
         end
-        if career_saveSystem and career_saveSystem.saveCurrent then
-            career_saveSystem.saveCurrent()
-        end
+     --  if career_saveSystem and career_saveSystem.saveCurrent then
+     --      career_saveSystem.saveCurrent()
+     --  end
     end
 
     if utils and utils.displayMessage then
