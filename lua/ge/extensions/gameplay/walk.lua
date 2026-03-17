@@ -20,6 +20,10 @@ local placePlayerOffsetFromBody = 0.7
 local active = false
 local pendingUnicycleEnter = nil
 
+-- ghost control
+local ghostedUnicycleId = nil
+local ghostTimer = 0
+
 local function getPlayerUnicycle(veh)
   veh = veh or getPlayerVehicle(0)
   if veh and veh:getJBeamFilename() == "unicycle" then
@@ -49,6 +53,13 @@ local function getUnicyleAtPosition(pos, visibilityPoint)
     local config = career_career and career_career.isActive() and "vehicles/unicycle/beammp_default.pc"
     unicycle = extensions.core_vehicles.spawnNewVehicle("unicycle", {pos = pos, visibilityPoint = visibilityPoint, removeTraffic = false, config = config})
   end
+  -- start ghost
+  if unicycle then
+    unicycle:queueLuaCommand("obj:setGhostEnabled(true)")
+    ghostedUnicycleId = unicycle:getID()
+    ghostTimer = 2
+  end
+
   return unicycle
 end
 
@@ -104,6 +115,15 @@ local function getOutOfVehicle(vehicle, pos, rot)
 
   local unicycle = getUnicyleAtPosition(pos, visibilityPoint)
   if not unicycle then return end
+
+  if vehicle then
+    local dist = (unicycle:getPosition() - vehicle:getPosition()):length()
+    if dist < 4 then
+      unicycle:queueLuaCommand("obj:setGhostEnabled(false)")
+      ghostedUnicycleId = nil
+      ghostTimer = 0
+    end
+  end
 
   local camData = core_camera.getCameraDataById(unicycle:getId())
   if camData and camData.unicycle then
@@ -238,6 +258,21 @@ end
 local otherBBCenter, otherBBAxis0, otherBBAxis1, otherBBAxis2 = vec3(), vec3(), vec3(), vec3()
 local vehPos = vec3()
 local function onUpdate(dtReal, dtSim)
+    -- handle unicycle ghost
+  if ghostedUnicycleId then
+    local ghostVeh = scenetree.findObjectById(ghostedUnicycleId)
+    if ghostVeh then
+      ghostTimer = ghostTimer - dtReal
+      if ghostTimer <= 0 then
+        ghostVeh:queueLuaCommand("obj:setGhostEnabled(false)")
+        ghostedUnicycleId = nil
+        ghostTimer = 0
+      end
+    else
+      ghostedUnicycleId = nil
+      ghostTimer = 0
+    end
+  end
   if pendingUnicycleEnter then
     local veh = scenetree.findObjectById(pendingUnicycleEnter)
     if veh and MPVehicleGE.isOwn(veh:getID()) then
