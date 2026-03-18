@@ -148,6 +148,7 @@ local playerPos = vec3()
 local function onUpdate(dtReal, dtSim, dtRaw)
   for inventoryId, vehId in pairs(career_modules_inventory.getMapInventoryIdToVehId()) do
     local vehInfo = career_modules_inventory.getVehicles()[inventoryId]
+    if not vehInfo then goto continue end
     if vehInfo.loanType == "work" then
       vehPos:set(be:getObjectPositionXYZ(vehId))
       playerPos:set(be:getObjectPositionXYZ(be:getPlayerVehicleID(0)))
@@ -158,6 +159,7 @@ local function onUpdate(dtReal, dtSim, dtRaw)
         break
       end
     end
+    ::continue::
   end
 
   for inventoryId, loanedVehInfo in pairs(loanedVehiclesInfo) do

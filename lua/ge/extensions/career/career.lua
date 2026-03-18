@@ -15,7 +15,7 @@ local debugMenuEnabled = not shipping_build
 local careerModuleDirectory = '/lua/ge/extensions/career/modules/'
 local saveFile = "general.json"
 local levelName = "west_coast_usa"
-local autosaveEnabled = true
+local autosaveEnabled = false
 
 local careerActive = false
 local careerModules = {}
@@ -348,7 +348,9 @@ local function formatSaveSlotForUi(saveSlot)
   local data = {}
   data.id = saveSlot
 
-  local autosavePath = career_saveSystem.getAutosave(career_saveSystem.getSaveRootDirectory() .. saveSlot)
+  -- Fix the path AND guard against nil
+  local autosavePath = career_saveSystem.getAutosave(saveSlot)
+  if not autosavePath then return data end
   local infoData = jsonReadFile(autosavePath .. "/info.json")
 
   local currentSaveSlot, _ = career_saveSystem.getCurrentSaveSlot()
