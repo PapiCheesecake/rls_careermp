@@ -3,6 +3,8 @@
 ## Welcome to my conversion of RLS! This makes it possible to use RLS Career Overhaul with StanleyDudek's CareerMP!!
 
 ## This is WIP so expect bugs and missing features, please report them here or in StanleyDudek's Discord.
+- Thanks to demonik631 for fixing the autosave and loaner vehicles!!!
+
 ## CareerMP is a dependency - https://github.com/StanleyDudek/CareerMP
 - Last tested Version: CareerMP v0.0.16
 
@@ -34,7 +36,7 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 ## Enjoy
 
 ### Known Bugs
-1. Autosave lua error (safely ignore this just use manual save, CareerMP handles saves after jobs anyways)
+1. Autosave lua error (finally fixed by demonik631, go thank him in the CareerMP discord)
 2. New joining players see players who are already in the server as Grey Orbs - Set your playerlist left click action to "Queue deleted vehicles" when ingame in Options/Multiplayer. Open the player list (add the ui app if not there) and click on the people who are orbs -- Side note, you have to remove the UI folder from within CareerMP :)
 3. Completing some jobs causes a player desync - im almost 100% ive found them all just hmu if it happens
 4. Police jobs are currently broke, do not attempt to use them
