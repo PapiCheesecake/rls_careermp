@@ -380,11 +380,22 @@ local function onSaveCurrentSaveSlot(currentSavePath, oldSaveDate, vehiclesThumb
 
   data.spawnedPlayerVehicles = {}
   for inventoryId, vehId in pairs(inventoryIdToVehId) do
-    local veh = getObjectByID(vehId)
-    if veh then
-      data.spawnedPlayerVehicles[inventoryId] = {pos = veh:getPosition(), rot = quat(0,0,1,0) * quat(veh:getRefNodeRotation())}
-    end
+  local veh = getObjectByID(vehId)
+
+  -- skip loaner/work vehicles
+  if vehicles[inventoryId] and vehicles[inventoryId].loanType == "work" then
+    goto continue
   end
+
+  if veh then
+    data.spawnedPlayerVehicles[inventoryId] = {
+      pos = veh:getPosition(),
+      rot = quat(0,0,1,0) * quat(veh:getRefNodeRotation())
+    }
+  end
+
+  ::continue::
+end
 
   if gameplay_walk.isWalking() then
     local playerVeh = getPlayerVehicle(0)
