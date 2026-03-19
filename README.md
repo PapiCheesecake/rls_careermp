@@ -35,7 +35,6 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 
 ### Known Bugs
 1. Autosave lua error (finally fixed by demonik631, go thank him in the CareerMP discord)
-2. New joining players see players who are already in the server as Grey Orbs - Set your playerlist left click action to "Queue deleted vehicles" when ingame in Options/Multiplayer. Open the player list (add the ui app if not there) and click on the people who are orbs -- Side note, you have to remove the UI folder from within CareerMP :)
-3. Completing some jobs causes a player desync - im almost 100% ive found them all just hmu if it happens
-4. Police jobs are currently broke, do not attempt to use them
-5. Drag strip isnt functional - working on a fix
+2. (unknow if this is fixed, it works fine for me) New joining players see players who are already in the server as Grey Orbs - Set your playerlist left click action to "Queue deleted vehicles" when ingame in Options/Multiplayer. Open the player list (add the ui app if not there) and click on the people who are orbs -- Side note, you have to remove the UI folder from within CareerMP :)
+3. Police jobs are currently broke, do not attempt to use them
+4. Drag strip isnt functional - working on a fix
