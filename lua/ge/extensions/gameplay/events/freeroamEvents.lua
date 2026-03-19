@@ -371,7 +371,7 @@ local function payoutRace()
                     message = message .. "\nHardcore mode is enabled, all rewards are halved."
                 end
             end
-            career_saveSystem.saveCurrent()
+           -- career_saveSystem.saveCurrent()
         end
     end
 
@@ -515,7 +515,7 @@ local function payoutDragRace(raceName, finishTime, finishSpeed, vehId)
     end
 
     -- Save the leaderboard and game state
-    career_saveSystem.saveCurrent()
+   -- career_saveSystem.saveCurrent()
 
     return reward
 end
