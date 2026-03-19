@@ -29,9 +29,7 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 3. Join the server, this creates a save for you. Same Goes for rejoining, it loads the save for you.
 
 # Saves
-- Be aware, this only uses the one save. Your BeamMP username. If you want to use a pre-existing save, copy it and rename the save folder to your BeamMP username.
-- A save will be auto created, or it will use the CareerMP save you used if thats there. Backup all saves prio to using this RLS Conversion.
-- Another note, DO NOT USE THE LOAD SAVE FEATURE. It does not work and can break saves
+- Saves work like CareerMP. howeer you can create a save with RLS loaded also. Ive not done this yet so any issues let me know
 
 ## Enjoy
 
