@@ -40,3 +40,4 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 1. Police jobs are currently broke, do not attempt to use them
 2. Drag strip isnt functional - working on a fix
 3. The performance index isnt functional
+4. You will always spawn as an "empty" unicycle unless you manually override it
