@@ -19,6 +19,7 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 4. Optional - Remove the "ui" folder from CareerMP, this allows you to use BeamMPs feature for one of the known bugs bellow.
 
 # Updating
+- There is a chance your save will not work on an updated version. Backup all saves. If your having issues try a fresh save.
 1. Remove old mod.zip
 2. Download and install new mod.zip
 3. Start Server
