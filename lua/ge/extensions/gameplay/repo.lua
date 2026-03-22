@@ -685,7 +685,7 @@ function VehicleRepoJob:onUpdate(dtReal, dtSim, dtRaw)
                     label = "You've Dropped Off a " .. self.vehInfo.Brand .. " " .. self.vehInfo.Name .. ".\nYou have been paid $" .. reward,
                     tags = {"gameplay", "reward", "laborer"}
                   }, true)
-                  career_saveSystem.saveCurrent()
+                --  career_saveSystem.saveCurrent()
                   if career_modules_inventory and career_modules_inventory.addRepossession and career_modules_inventory.getInventoryIdFromVehicleId then
                     career_modules_inventory.addRepossession(career_modules_inventory.getInventoryIdFromVehicleId(repoId))
                   end
