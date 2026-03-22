@@ -36,7 +36,7 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 
 ### Known Bugs
 1. Police jobs are currently broke, do not attempt to use them.
-2. Drag strip isnt functional - working on a fix.
+2. Drag strip isnt functional - Found a temp fix
 3. The performance index isnt functional.
 4. You will always spawn as an "empty" unicycle unless you manually override it.
-5. Deliveries will have the auto navigation toggle set to off, you have to re enable it in the delivery menu.
+5. Deliveries will have the auto navigation toggle set to off, you have to re enable it in the delivery menu. - Found a fix (unreleased)
