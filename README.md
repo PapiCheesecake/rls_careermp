@@ -35,9 +35,8 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 ## Enjoy
 
 ### Known Bugs
-- Autosave lua error (finally fixed by demonik631, go thank him in the CareerMP discord)
-- (unknow if this is fixed, it works fine for me) New joining players see players who are already in the server as Grey Orbs - Set your playerlist left click action to "Queue deleted vehicles" when ingame in Options/Multiplayer. Open the player list (add the ui app if not there) and click on the people who are orbs -- Side note, you have to remove the UI folder from within CareerMP :)
 1. Police jobs are currently broke, do not attempt to use them
 2. Drag strip isnt functional - working on a fix
 3. The performance index isnt functional
 4. You will always spawn as an "empty" unicycle unless you manually override it
+5. Deliveries will have the auto navigation toggle set to off, you have to re enable it in the delivery menu.
