@@ -30,7 +30,7 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 3. Join the server, this creates a save for you. Same Goes for rejoining, it loads the save for you.
 
 # Saves
-- Saves work like CareerMP. howeer you can create a save with RLS loaded also. Ive not done this yet so any issues let me know.
+- Saves work like CareerMP. however you can create a save with RLS loaded also. Ive not done this yet so any issues let me know.
 
 ## Enjoy
 
