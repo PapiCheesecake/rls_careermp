@@ -57,7 +57,7 @@ end
 
 local function saveMission(id)
   cacheMissionData(id)
-  career_saveSystem.saveCurrent()
+--  career_saveSystem.saveCurrent()
 end
 
 local function onAnyMissionChanged(state, mission)
@@ -85,7 +85,7 @@ local function preMissionHandling(step, task)
   scenetree.tod.play = false
 
   if career_career.isAutosaveEnabled() then
-    career_saveSystem.saveCurrent()
+  --  career_saveSystem.saveCurrent()
   else
     missionStartStep.handlingComplete = true
     missionStartStep = nil

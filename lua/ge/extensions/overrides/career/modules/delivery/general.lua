@@ -49,9 +49,9 @@ local function loadSaveData()
   loadData.facilities = loadData.facilities or {}
   loadData.settings = data.settings or {}
 
-  if loadData.settings.automaticRoute == nil then
+  -- if loadData.settings.automaticRoute == nil then
     loadData.settings.automaticRoute = true
-  end
+  -- end
 
   deliveryGameTime = loadData.general and loadData.general.gameTime or deliveryGameTime
   if loadData.general and loadData.general.osTime then
