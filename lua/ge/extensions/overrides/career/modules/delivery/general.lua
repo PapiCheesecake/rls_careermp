@@ -49,9 +49,9 @@ local function loadSaveData()
   loadData.facilities = loadData.facilities or {}
   loadData.settings = data.settings or {}
 
-  -- if loadData.settings.automaticRoute == nil then
+  if loadData.settings.automaticRoute == nil then
     loadData.settings.automaticRoute = true
-  -- end
+  end
 
   deliveryGameTime = loadData.general and loadData.general.gameTime or deliveryGameTime
   if loadData.general and loadData.general.osTime then
@@ -335,6 +335,7 @@ local function updateContainerWeights(delayCallback)
     end
   end
   for _, cargo in ipairs(dParcelManager.getAllCargoInVehicles()) do
+    if not updatePerVehicle[cargo.location.vehId] then goto skipCargo end
     updatePerVehicle[cargo.location.vehId][cargo.location.containerId] = updatePerVehicle[cargo.location.vehId][cargo.location.containerId] or {
       volume = 0,
       density = 1,
@@ -353,7 +354,7 @@ local function updateContainerWeights(delayCallback)
       -- only keep one density, since all cargo in one container have the same density
       updatePerVehicle[cargo.location.vehId][cargo.location.containerId].density = (cargo.weight/cargo.slots or 1)
     end
-
+    ::skipCargo::
   end
   --if next(updatePerVehicle) then
   for vehId, data in pairs(updatePerVehicle) do

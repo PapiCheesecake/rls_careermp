@@ -404,9 +404,151 @@ local function clusterFormatCargo(cargo, playerCargoContainers, updateFirstSeen)
   return ret
 end
 
-------------------------------
--- Vehicle Offer Formatting --
-------------------------------
+-- formats a group of "identical" cargo as a prop cargo card (no container check needed)
+local function formatCargoGroupAsProp(group, showFirstSeen)
+  table.sort(group, idSort)
+  local ret = {
+    id = group[1].id,
+    ids = {},
+    name = group[1].name,
+    loadedAtTimeStamp = group[1].loadedAtTimeStamp,
+    originName = dParcelManager.getLocationLabelShort(group[1].origin),
+    locationName = dParcelManager.getLocationLabelShort(group[1].location),
+    destinationName = dParcelManager.getLocationLabelShort(group[1].destination),
+    originNameLong = dParcelManager.getLocationLabelLong(group[1].origin),
+    locationNameLong = dParcelManager.getLocationLabelLong(group[1].location),
+    destinationNameLong = dParcelManager.getLocationLabelLong(group[1].destination),
+    origin = group[1].origin,
+    location = group[1].location,
+    destination = group[1].destination,
+    type = group[1].type,
+    materialType = group[1].materialType,
+    slots = group[1].slots,
+    distance = group[1].data and group[1].data.originalDistance,
+    rewardMoney = group[1].rewards and (group[1].rewards.money * 2),
+    weight = group[1].weight,
+    enabled = true,
+    disableReason = {},
+    targetLocations = {},
+    autoLoadLocations = {},
+    remainingOfferTime = group[1].offerExpiresAt - dGeneral.time(),
+    modifiers = {},
+    automaticDropOff = group[1].automaticDropOff,
+    _transientMove = group[1]._transientMove,
+    hiddenInFacility = group[1].hiddenInFacility,
+    route = {
+      type = "navgraph",
+      locations = {group[1].location, group[1].destination}
+    },
+    bigMapIds = {}
+  }
+
+  if group[1].destination and group[1].destination.type ~= "multi" then
+    ret.bigMapIds[string.format("delivery-parking-%s-%s", group[1].destination.facId, group[1].destination.psPath)] = true
+  elseif group[1].destination and group[1].destination.type == "multi" then
+    for _, loc in ipairs(group[1].destination.destinations) do
+      ret.bigMapIds[string.format("delivery-parking-%s-%s", loc.facId, loc.psPath)] = true
+    end
+  end
+
+  for _, cargo in ipairs(group) do
+    table.insert(ret.ids, cargo.id)
+  end
+
+  local transientMoveCounts = 0
+  for _, cargo in ipairs(group) do
+    transientMoveCounts = transientMoveCounts + (cargo._transientMove and 1 or 0)
+  end
+  ret.transientMoveCounts = transientMoveCounts
+
+  if showFirstSeen then
+    if group[1].firstSeen and (dGeneral.time() - group[1].firstSeen) < 3 then
+      ret.showNewTimer = 3 - (dGeneral.time() - group[1].firstSeen)
+    end
+  end
+
+  -- expire check
+  if ret.remainingOfferTime <= 0 then
+    ret.enabled = false
+    ret.disableReason = {type = "expired"}
+    return ret
+  end
+
+  -- show modifiers with 3x time multiplier for display
+  local modifierKeys = {}
+  for _, mod in ipairs(group[1].modifiers or {}) do
+    local modData = dParcelMods.getModData(mod.type)
+    modifierKeys[mod.type] = true
+    if not modData.hidden then
+      local modProp = {type = mod.type, icon = modData.icon, active = true, label = modData.label, description = modData.shortDescription, important = modData.important}
+      table.insert(ret.modifiers, modProp)
+      if mod.type == "timed" then
+        ret.hasTimerMod = true
+        local delayedTime = mod.timeUntilDelayed * 3
+        local lateTime    = mod.timeUntilLate    * 3
+        local expiredTime = dGeneral.time() - (group[1].loadedAtTimeStamp or dGeneral.time())
+        if group[1].loadedAtTimeStamp then
+          if expiredTime <= delayedTime then
+            ret.remainingTime = { type = "untilDelayed", time = delayedTime - expiredTime, percent = (delayedTime - expiredTime) / delayedTime }
+          elseif expiredTime <= lateTime then
+            ret.remainingTime = { type = "untilLate", time = lateTime - expiredTime, percent = (lateTime - expiredTime) / (lateTime - delayedTime) }
+          else
+            ret.remainingTime = { type = "late", percent = 0 }
+          end
+        else
+          ret.remainingTime = { type = "preLoad", time = delayedTime }
+        end
+      end
+    end
+  end
+
+  -- one prop-delivery target: always enabled, capacity = count of parcels in group
+  local propTarget = {
+    type = "propDelivery",
+    label = "Spawn as Prop",
+    enabled = true,
+    maxAmount = #group,
+    selectedAmount = transientMoveCounts,
+    usedCargoSlots = 0,
+    totalCargoSlots = 99,
+  }
+  table.insert(ret.targetLocations, propTarget)
+
+  -- autoLoadLocations: one entry per parcel in the group
+  for i = 1, #group - transientMoveCounts do
+    table.insert(ret.autoLoadLocations, {type = "propDelivery"})
+  end
+
+  return ret
+end
+
+-- groups cargo and formats each group as a prop cargo card
+local function clusterFormatCargoAsProp(cargo, showFirstSeen)
+  local ret = {}
+  local cargoByGroupId = {}
+  for _, c in ipairs(cargo) do
+    -- only include non-material parcels
+    if not c.materialType then
+      local gId = string.format("%d-%d", c.groupId, c.loadedAtTimeStamp or -1)
+      cargoByGroupId[gId] = cargoByGroupId[gId] or {}
+      dGenerator.finalizeParcelItemDistanceAndRewards(c)
+      if showFirstSeen then
+        c.firstSeen = c.firstSeen or dGeneral.time()
+      end
+      table.insert(cargoByGroupId[gId], c)
+    end
+  end
+  for _, group in pairs(cargoByGroupId) do
+    local formatted = formatCargoGroupAsProp(group, showFirstSeen)
+    formatted.cardType = "parcelGroup"   -- must match Vue's check for Load All buttons
+    formatted.isPropCargo = true         -- distinguishes from regular parcel cards in Lua
+    formatted.isFacilityCard = true
+    addCard(formatted)
+    table.insert(ret, formatted)
+  end
+  table.sort(ret, lowestIdSort)
+  return ret
+end
 
 -- gets the thumbnail for a vehicle
 local function getVehicleThumb(vehicle)
@@ -968,7 +1110,7 @@ local function requestCargoDataForUi(facId, psPath, updateMaxTimeTimestamp)
           type = "skill",
           skillInfo = career_modules_branches_landing.getBranchSkillCardData("logistics-delivery"),
           branchId = "labourer", skillId="logistics-delivery",
-          filterValueButtons = {'parcel','trailer','material'},
+          filterValueButtons = {'parcel','propCargo','trailer','material'},
           heading = "Cargo Delivery",
           description = 'Deliver parcels, fluids, dry bulk in containers, or haul small and large trailers.',
           externalButtons = { {
@@ -1080,6 +1222,10 @@ local function requestCargoDataForUi(facId, psPath, updateMaxTimeTimestamp)
         --local outgoingCargo = dParcelManager.getAllCargoCustomFilter(function() return true end)
         local outgoingCargo = dParcelManager.getAllCargoForFacilityUnexpiredUndelivered(facId, cargoOverviewScreenOpenedTime, cargoOverviewMaxTimeTimestamp)
         uiData.facility.outgoingCargo = clusterFormatCargo(outgoingCargo, playerCargoContainers, true)
+
+        -- add prop cargo cards (same parcel data, but routed through physical props)
+        uiData.facility.propCargoCards = clusterFormatCargoAsProp(outgoingCargo, true)
+        uiData.availableSystems.propCargoDelivery = #uiData.facility.propCargoCards > 0
 
         -- add all vehicle and trailer offers at this location
         local vehOffers = dVehOfferManager.getAllOfferAtFacilityUnexpired(facId, psPath)
@@ -1254,7 +1400,76 @@ local function requestCargoDataForUi(facId, psPath, updateMaxTimeTimestamp)
 
     end
 
-    -- set player fields
+    -- Inject player cards for active prop cargo deliveries.
+    -- These are in the parcel manager with location.type="vehicle" but are not in
+    -- any physical JBeam container, so they don't appear in the container loop above.
+    -- Key fix: use location=origin (facilityParkingspot) so getCardGroupSetsByKey
+    -- does NOT add a container_{vehId} groupTag — that would crash because no
+    -- container group entry exists for prop vehicles.
+    -- filterTags and groupTags are intentionally left unset; getCardGroupSetsByKey
+    -- computes them correctly from isPlayerCard, isPropCargo, cardType, etc.
+    if career_modules_delivery_propCargo and career_modules_delivery_propCargo.getPropTasks then
+      for _, task in ipairs(career_modules_delivery_propCargo.getPropTasks()) do
+        local propCargoGroup = {}
+        for _, cargoId in ipairs(task.cargoIds) do
+          local c = dParcelManager.getCargoById(cargoId)
+          if c then
+            dGenerator.finalizeParcelItemDistanceAndRewards(c)
+            table.insert(propCargoGroup, c)
+          end
+        end
+        if #propCargoGroup > 0 then
+          local first = propCargoGroup[1]
+          local totalReward = 0
+          local totalWeight = 0
+          local ids = {}
+          for _, c in ipairs(propCargoGroup) do
+            totalReward = totalReward + (c.rewards and c.rewards.money or 0)
+            totalWeight = totalWeight + (c.weight or 0)
+            table.insert(ids, c.id)
+          end
+          local card = {
+            id                  = first.id,
+            ids                 = ids,
+            name                = first.name,
+            destinationName     = dParcelManager.getLocationLabelShort(first.destination),
+            destinationNameLong = dParcelManager.getLocationLabelLong(first.destination),
+            origin              = first.origin,
+            location            = first.origin,  -- must be facilityParkingspot, NOT vehicle
+            destination         = first.destination,
+            type                = first.type,
+            slots               = first.slots,
+            weight              = totalWeight,
+            rewardMoney         = totalReward,
+            distance            = first.data and first.data.originalDistance,
+            enabled             = true,
+            disableReason       = {},
+            targetLocations     = {},
+            autoLoadLocations   = {},
+            transientMoveCounts = 0,
+            modifiers           = {},
+            cardType            = "parcelGroup",
+            isPropCargo         = true,
+            isPlayerCard        = true,
+            isFacilityCard      = false,
+            remainingOfferTime  = first.offerExpiresAt - dGeneral.time(),
+            taskList            = {"Deliver to " .. dParcelManager.getLocationLabelLong(first.destination)},
+            nextTasks           = {{label = "Bring to " .. dParcelManager.getLocationLabelLong(first.destination), checked = false}},
+            bigMapIds           = {
+              [string.format("delivery-parking-%s-%s",
+                first.destination.facId, first.destination.psPath)] = true
+            },
+            route = {
+              type      = "navgraph",
+              locations = {first.origin, first.destination},
+            },
+          }
+          addCard(card)
+          uiData.availableSystems.parcelDelivery = true
+        end
+      end
+    end
+
     uiData.player.loadedCargoMoneySum = playerMoneySum
     uiData.player.penaltyForAbandon = dGeneral.getDeliveryModePenalty()
     uiData.player.weightSum = playerWeightSum
@@ -1451,6 +1666,26 @@ end
 
 -- call this function to commit the configuration and clear all transient flags.
 local function commitDeliveryConfiguration()
+  -- extract any propDelivery-targeted cargo before the normal commit flow runs
+  local propCargoBatch = {}
+  do
+    local allTransient = dParcelManager.getTransientMoveCargo()
+    for _, cargo in ipairs(allTransient) do
+      if cargo and cargo._transientMove
+         and cargo._transientMove.targetLocation
+         and cargo._transientMove.targetLocation.type == "propDelivery" then
+        table.insert(propCargoBatch, {
+          id          = cargo.id,
+          origin      = cargo.origin,
+          destination = cargo.destination,
+          name        = cargo.name,
+          weight      = cargo.weight,
+          rewards     = cargo.rewards,
+        })
+        dParcelManager.clearTransientMoveForCargo(cargo.id)
+      end
+    end
+  end
   local function getOffersToSpawn()
     local offers = {}
     local vehOffers = dVehOfferManager.getAllOfferUnexpired()
@@ -1800,6 +2035,16 @@ local function commitDeliveryConfiguration()
       local postLoadTransientCargo = dParcelManager.getTransientMoveCargo()
       pendingTransientMoves = #postLoadTransientCargo > 0
       gameplay_markerInteraction.setForceReevaluateOpenPrompt()
+    end
+  end
+
+  -- spawn physical props for any prop-cargo that was committed
+  if #propCargoBatch > 0 then
+    if not career_modules_delivery_propCargo then
+      extensions.load("career_modules_delivery_propCargo")
+    end
+    if career_modules_delivery_propCargo then
+      career_modules_delivery_propCargo.spawnPropsForCargo(propCargoBatch, cargoScreenFacId, cargoScreenPsPath)
     end
   end
 end
