@@ -16,7 +16,7 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 1. Download and setup CareerMP on your BeamMP Server.
 1. Download from the realeases the latest version. 
 3. Place the RLS_3.6.4_v(number) into your servers Resources/Client folder.
-4. Optional - Remove the "ui" folder from CareerMP, this allows you to use BeamMPs feature for one of the known bugs bellow.
+4. Optional/Not Required Anymore - Remove the "ui" folder from CareerMP, this allows you to use BeamMPs feature for one of the known bugs bellow.
 
 # Updating
 - There is a chance your save will not work on an updated version. Backup all saves. If your having issues try a fresh save.
