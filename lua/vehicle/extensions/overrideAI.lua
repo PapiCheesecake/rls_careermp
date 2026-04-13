@@ -146,6 +146,10 @@ local traffic = {
   distAhead = 40     -- minimum Ahead distance for searching traffic vehicle
 }
 
+local trafficTrafficSnapshot = {}
+local surfaceNormalSegCache = {}
+local altPlanRunAltPlans = false
+
 -- [[ OPPONENT DATA ]] --
 local player
 
@@ -564,6 +568,21 @@ local function driveToTarget(targetPos, throttle, brake, targetSpeed)
       local steerCoef = outDeviation * absegoSpeed * absegoSpeed * min(1, dirAngle * dirAngle * 4)
       local understeerCoef = max(0, steerCoef) * min(1, abs(ego.vel:dot(p2p1DirVec) * 3))
       local noUndersteerCoef = max(0, 1 - understeerCoef)
+      -- Racing: when wide of centerline, do not lift as hard for "understeer" — keeps pace on alternate lines.
+      if opt.racing and type(parameters.raceWideLineUndersteerRelax) == 'number' and parameters.raceWideLineUndersteerRelax > 0 and plan[plan.egoSeg or 1] and plan[(plan.egoSeg or 1) + 1] then
+        local es = plan.egoSeg or 1
+        local a, b = plan[es].pos, plan[es + 1].pos
+        local xn = ego.pos:xnormOnLine(a, b)
+        if xn < 0 then xn = 0 elseif xn > 1 then xn = 1 end
+        local onL = a + (b - a) * xn
+        local latMag = abs((ego.pos - onL):dot(plan[es].normal))
+        local lat0 = (type(parameters.raceWideLineLateralStartM) == 'number' and parameters.raceWideLineLateralStartM) or 0.85
+        local lat1 = (type(parameters.raceWideLineLateralEndM) == 'number' and parameters.raceWideLineLateralEndM) or 2.5
+        if lat1 <= lat0 then lat1 = lat0 + 0.01 end
+        local tWide = clamp((latMag - lat0) / (lat1 - lat0), 0, 1)
+        local relax = tWide * clamp(parameters.raceWideLineUndersteerRelax, 0, 1)
+        noUndersteerCoef = noUndersteerCoef + (1 - noUndersteerCoef) * relax
+      end
       throttleUnderCoef = noUndersteerCoef
       brakeUnderCoef = min(brakeUnderCoef, max(0, 1 - understeerCoef * understeerCoef))
     end
@@ -602,8 +621,40 @@ local function driveToTarget(targetPos, throttle, brake, targetSpeed)
 
       -- tcs
       propSlip = propSlip * (parameters.driveStyle == 'offRoad' and 0.8 or 1)
-      local tcsCoef = max(0, absegoSpeed - propSlip * propSlip) / absegoSpeed
-      throttleTcsCoef = min(tcsCoef, smoothTcs:get(tcsCoef, dt))
+      local tcsCoef
+      if opt.racing then
+        -- State-based (no config): target slip at limit, lift only as much as needed, no cap; recover full throttle when under target.
+        local stateBased = (parameters.raceSlipThreshold == nil and parameters.raceAccelScale == nil)
+        if stateBased then
+          local slipTarget = 1.0
+          local slipGain = 0.35
+          if propSlip <= slipTarget then
+            tcsCoef = 1
+            smoothTcs:set(1)
+            throttleTcsCoef = 1
+          else
+            local reduction = slipGain * (propSlip - slipTarget)
+            tcsCoef = max(0, 1 - reduction)
+            throttleTcsCoef = min(tcsCoef, smoothTcs:get(tcsCoef, dt))
+          end
+        else
+          local slipThreshold = (type(parameters.raceSlipThreshold) == 'number' and parameters.raceSlipThreshold) or 1.0
+          local slipGain = (type(parameters.raceSlipGain) == 'number' and parameters.raceSlipGain) or 0.2
+          local maxReduction = (type(parameters.raceSlipMaxReduction) == 'number' and parameters.raceSlipMaxReduction) or 0.55
+          if propSlip <= slipThreshold then
+            tcsCoef = 1
+            smoothTcs:set(1)
+            throttleTcsCoef = 1
+          else
+            local reduction = min(maxReduction, slipGain * (propSlip - slipThreshold))
+            tcsCoef = max(0, 1 - reduction)
+            throttleTcsCoef = min(tcsCoef, smoothTcs:get(tcsCoef, dt))
+          end
+        end
+      else
+        tcsCoef = max(0, absegoSpeed - propSlip * propSlip) / absegoSpeed
+        throttleTcsCoef = min(tcsCoef, smoothTcs:get(tcsCoef, dt))
+      end
     else
       brakeABSCoef = 0
       throttleTcsCoef = 0
@@ -627,6 +678,17 @@ local function driveToTarget(targetPos, throttle, brake, targetSpeed)
   end
   if parameters.throttleTcs ~= 'off' then
     throttleCoef = min(throttleCoef, throttleTcsCoef)
+  end
+  -- Race: optional throttle floor from config only; state-based mode has no floor (throttle purely from slip/path).
+  if opt.racing and type(parameters.raceThrottleFloor) == "number" then
+    local floor = parameters.raceThrottleFloor
+    local hiSpd = parameters.raceHighSpeedThreshold
+    if type(hiSpd) == "number" and ego.speed > hiSpd then
+      floor = parameters.raceHighSpeedThrottleFloor or 0.7
+    end
+    if throttleTcsCoef >= floor then
+      throttleCoef = max(throttleCoef, floor)
+    end
   end
 
   local dirTarget = ego.dirVec:dot(targetVec)
@@ -802,7 +864,11 @@ local function driveToTarget(targetPos, throttle, brake, targetSpeed)
       end
 
       local targetSpeed = sqrt(2 * g * min(aggression, ego.staticFrictionCoef) * max(0, minDist - threshold) * dirCoef)
-      twt.targetSpeed = max(min(twt.speedSmoother:get(targetSpeed, dt), min(6, aggression * 6)), 0.3)
+      local stateBasedRacing = opt.racing and (parameters.raceObstacleSpeedCap == nil and parameters.raceAccelScale == nil)
+      local capMax = stateBasedRacing and 80 or (opt.racing and (parameters.raceObstacleSpeedCap or 12) or 6)
+      local capAgg = stateBasedRacing and 80 or (opt.racing and (parameters.raceObstacleSpeedCapAgg or 10) or 6)
+      local speedCap = opt.racing and min(capMax, aggression * capAgg) or min(6, aggression * 6)
+      twt.targetSpeed = max(min(twt.speedSmoother:get(targetSpeed, dt), speedCap), 0.3)
       local speedDif = twt.targetSpeed - twt.dirState[1] * sign2(dirVel) * ego.speed
       local steering = twt.steerSmoother:get(twt.dirState[2], dt)
       local pbrake = 0 -- * clamp(sign2(0.83 + ego.upVec:dot(gravityDir)), 0, 1) -- >= 10 deg
@@ -846,7 +912,16 @@ local function driveToTarget(targetPos, throttle, brake, targetSpeed)
     end
 
     local aggSq = square(aggression + max(0, -(ego.dirVec:dot(gravityDir))))
-    local rate = max(throttleSmoother[throttleSmoother:value() < throttle], 10 * aggSq * aggSq)
+    local stateBasedRacing = opt.racing and (parameters.raceThrottleRateMult == nil and parameters.raceAccelScale == nil)
+    local rateMult = stateBasedRacing and 4 or (opt.racing and (parameters.raceThrottleRateMult or 2) or 1)
+    if opt.racing and ego.speed < 1.5 and throttle > 0.8 then
+      throttleSmoother:set(throttle)
+    end
+    local recoveryMult = 1
+    if opt.racing and throttle > throttleSmoother:value() then
+      recoveryMult = (stateBasedRacing and 2) or (type(parameters.raceThrottleRecoveryMult) == 'number' and parameters.raceThrottleRecoveryMult) or 1.45
+    end
+    local rate = max(throttleSmoother[throttleSmoother:value() < throttle], 10 * aggSq * aggSq * rateMult * recoveryMult)
     throttle = throttleSmoother:getWithRateUncapped(throttle, dt, rate)
 
     driveCar(dirAngle, throttle, brake, pbrake)
@@ -2366,6 +2441,17 @@ local function calculateTrafficTargetSpeed(plan, trafficTable)
   plan.trafficTargetSpeed = math.huge
   local trafficTableLen = #trafficTable
   if trafficTableLen > 0 and plan.targetSpeed > 0 then
+    for j = 1, trafficTableLen do
+      local v = trafficTable[j]
+      v.posMiddle, v.vx, v.vy, v.vz = getObjectBoundingBox(v.id)
+      v.vx:setScaled(1.1)
+      v.posFront = v.posMiddle + v.vx
+      v.posRear = v.posMiddle - v.vx
+      v.dirVec = v.vx:normalized()
+      v.length = v.vx:length() * 2
+      v.width = v.vy:length() * 2
+    end
+
     local distOnPlan = - plan[1].length * plan.egoXnormOnSeg -- 0
     local segDirVec, segVx, segC, segVz, segVy = vec3(), vec3(), vec3(), vec3(), vec3()
     local stopFlag = false
@@ -2377,20 +2463,22 @@ local function calculateTrafficTargetSpeed(plan, trafficTable)
       -- Bounding box of segment [n1, n2]
       segVx:setScaled2(segDirVec, 0.5 * n1.length)
       segC:setAdd2(n1.pos, segVx)
-      segVz = mapmgr.surfaceNormalBelow(segC, (n1.radiusOrig + n2.radiusOrig) * 0.25); segVz:setScaled(-1)
+      local surfRad = (n1.radiusOrig + n2.radiusOrig) * 0.25
+      local sk = floor(segC.x) .. "|" .. floor(segC.y) .. "|" .. floor(surfRad * 100 + 0.5)
+      local cachedSurf = surfaceNormalSegCache[sk]
+      if cachedSurf then
+        segVz:set(cachedSurf)
+      else
+        segVz:set(mapmgr.surfaceNormalBelow(segC, surfRad))
+        segVz:setScaled(-1)
+        surfaceNormalSegCache[sk] = vec3(segVz)
+      end
       segVy:setCross(segVz, segVx); segVy:setScaled(0.5 * ego.width / (segVy:length() +  1e-30)) -- 0.5 * (ego.width + 1)
       segVy:setScaled2(segVz:cross(segVx):normalized(), 0.5 * ego.width)
 
       for j = trafficTableLen, 1, -1 do
         --if stopFlag then break end
         local v = trafficTable[j]
-        v.posMiddle, v.vx, v.vy, v.vz = getObjectBoundingBox(v.id)
-        v.vx:setScaled(1.1)
-        v.posFront = v.posMiddle + v.vx
-        v.posRear = v.posMiddle - v.vx
-        v.dirVec = v.vx:normalized()
-        v.length = v.vx:length() * 2
-        v.width = v.vy:length() * 2
         local check_ahead = (ego.length * push3(ego.dirVec) - ego.pos + v.posFront):dot(ego.dirVec) > 0 --(v.posFront - (ego.pos - ego.length * ego.dirVec)):dot(ego.dirVec) > 0
         plan.distancesV = check_ahead and min(ego.pos:squaredDistance(v.posMiddle), plan.distancesV) or plan.distancesV
 
@@ -2653,7 +2741,9 @@ local function side_avoidance(plan)
       a = dS < - 1 * ego.length and 0 or a -- No action if other vehicle is far behind us
       local v_close = max(0, -sign(dD) * v_rel) -- Approaching speed, positive if approaching, zero otherwise
       local c_req = v_close > 0 and c_base + T_close * v_close or c_base_away -- compute desired free gap
-      local half_sum = 0.5 * (ego.width + v.width) + margin_static
+      local vW = v.effectiveWidth or v.width
+      local margin_eff = (plan.clearanceScale and (margin_static * plan.clearanceScale)) or margin_static
+      local half_sum = 0.5 * (ego.width + vW) + margin_eff
       local gap_free = max(0, abs(dD) - half_sum) -- compute current free gap
       local deficit = max(0, c_req - gap_free) -- compute missing free gap
       local contrib_mag = a * deficit -- scale missing free gap by intensity factor
@@ -2802,6 +2892,10 @@ end
 local function raceplanAhead(route, baseRoute, pmode)
   ----########## Intro Code #########-----
   if not route then return end
+
+  if not pmode then
+    table.clear(surfaceNormalSegCache)
+  end
 
   if not route.path then
     route = createNewRoute(route)
@@ -3017,20 +3111,44 @@ local function raceplanAhead(route, baseRoute, pmode)
   end
 
   ----#### Populate Traffic Table ####----
-  table.clear(traffic.trafficTable)
-  for plID, v in pairs(mapmgr.getObjects()) do
-    if plID ~= objectId and (M.mode ~= 'chase' or plID ~= player.id or internalState.chaseData.playerState == 'stopped') then
-      v.targetType = (player and plID == player.id) and M.mode
-      if opt.avoidCars == 'on' or v.targetType == 'follow' then
-        v.length = obj:getObjectInitialLength(plID) + 0.3
-        v.width = obj:getObjectInitialWidth(plID)
-        local posFront = obj:getObjectFrontPosition(plID)
-        local dirVec = v.dirVec
-        v.posFront = dirVec * 0.3 + posFront
-        v.posRear = dirVec * (-v.length) + posFront
-        v.posMiddle = (v.posFront + v.posRear) * 0.5
-        table.insert(traffic.trafficTable, v)
+  -- Racing: always consider other vehicles; clearance scale (aggression) makes avoidance variable. No binary avoidCars for racing.
+  plan.clearanceScale = nil
+  if opt.racing then
+    plan.clearanceScale = min(max(1 - 0.5 * aggression, 0.50), 1)
+  end
+  local tt = traffic.trafficTable
+  table.clear(tt)
+  if pmode then
+    local snap = trafficTrafficSnapshot
+    for i = 1, #snap do
+      tt[i] = snap[i]
+    end
+  else
+    for plID, v in pairs(mapmgr.getObjects()) do
+      if plID ~= objectId and (M.mode ~= 'chase' or plID ~= player.id or internalState.chaseData.playerState == 'stopped') then
+        v.targetType = (player and plID == player.id) and M.mode
+        if opt.racing or opt.avoidCars == 'on' or v.targetType == 'follow' then
+          v.length = obj:getObjectInitialLength(plID) + 0.3
+          v.width = obj:getObjectInitialWidth(plID)
+          local posFront = obj:getObjectFrontPosition(plID)
+          local dirVec = v.dirVec
+          v.posFront = dirVec * 0.3 + posFront
+          v.posRear = dirVec * (-v.length) + posFront
+          v.posMiddle = (v.posFront + v.posRear) * 0.5
+          if opt.racing and plan.clearanceScale then
+            v.effectiveLength = v.length * plan.clearanceScale
+            v.effectiveWidth = v.width * plan.clearanceScale
+          end
+          table.insert(tt, v)
+        end
       end
+    end
+    local snap = trafficTrafficSnapshot
+    for i = 1, #tt do
+      snap[i] = tt[i]
+    end
+    for i = #tt + 1, #snap do
+      snap[i] = nil
     end
   end
   plan.trafficMinProjSpeed = math.huge
@@ -3043,7 +3161,11 @@ local function raceplanAhead(route, baseRoute, pmode)
     if plan.dispLat ~= 0 then
       plan.sideDisp = true
       local sideDisp = plan.dispLat -- (sideDisp > 0) means v-vehicle is on our left side and ego should move right
-      sideDisp = min(dt * parameters.awarenessForceCoef * 10, abs(sideDisp)) * sign2(sideDisp) -- limited displacement per frame
+      local awarenessCoef = parameters.awarenessForceCoef * (opt.racing and (type(parameters.raceAwarenessCoefScale) == 'number' and parameters.raceAwarenessCoefScale or 1.0) or 1)
+      sideDisp = min(dt * awarenessCoef * 10, abs(sideDisp)) * sign2(sideDisp) -- limited displacement per frame
+      if opt.racing and plan.clearanceScale then
+        sideDisp = sideDisp * plan.clearanceScale
+      end
       local curDist = 0
       local lastPlanIdx = 2
       local targetDist = square(ego.speed) / (2 * g * aggression) + max(30, ego.speed * 3) -- longer adjustment at higher speeds
@@ -3094,7 +3216,8 @@ local function raceplanAhead(route, baseRoute, pmode)
     local v2 = plan[i+1].dirVec
 
     n1.turnDir:setSub2(v1, v2); n1.turnDir:normalize()
-    nforce:setScaled2(n1.turnDir, (1-twt.state) * max(1 - v1:dot(v2), 0) * parameters.turnForceCoef)
+    local turnCoef = parameters.turnForceCoef * (opt.racing and (type(parameters.raceTurnCoefScale) == 'number' and parameters.raceTurnCoefScale or 1.0) or 1)
+    nforce:setScaled2(n1.turnDir, (1-twt.state) * max(1 - v1:dot(v2), 0) * turnCoef)
 
     forces[i+1]:setSub(nforce)
     forces[i-1]:setSub(nforce)
@@ -3135,6 +3258,58 @@ local function raceplanAhead(route, baseRoute, pmode)
   --profilerPopEvent("ai_smoothness_integration")
 
   updatePlanLen(plan, 2, plan.planCount)
+
+  -- Racing: bias lateral position toward the outside of tight corners (wider arc, more human line sacrifice).
+  -- Uses geometry + previous-frame curvature; reclamps to lane/road limits. State-based slip/TCS handles stability.
+  if opt.racing and not pmode and type(parameters.raceCornerLineLiftMaxM) == 'number' and parameters.raceCornerLineLiftMaxM > 0 then
+    local liftMax = parameters.raceCornerLineLiftMaxM * clamp((type(parameters.raceCornerLineLiftScale) == 'number' and parameters.raceCornerLineLiftScale) or 1, 0, 1.5)
+    local k0 = (type(parameters.raceCornerCurvStart) == 'number' and parameters.raceCornerCurvStart) or 0.022
+    local k1 = (type(parameters.raceCornerCurvEnd) == 'number' and parameters.raceCornerCurvEnd) or 0.10
+    if k1 <= k0 then k1 = k0 + 1e-4 end
+    local roadWidthMargin = ego.width * 0.8
+    local laneWidthMargin = ego.width * 0.8
+    local function raceCornerLineLiftApply(liftPlan)
+      if not liftPlan or not liftPlan[2] or (liftPlan.planCount or 0) < 2 then return end
+      for i = 2, liftPlan.planCount - 1 do
+        local n = liftPlan[i]
+        local np = liftPlan[i + 1]
+        if np and n.vec and np.vec then
+          local cInst = abs(inCurvature(n.vec, np.vec))
+          local kRef = max(cInst, abs(n.curvature or 0))
+          local t = clamp((kRef - k0) / (k1 - k0), 0, 1)
+          if t > 0 then
+            tmpVec:setSub2(n.dirVec, np.dirVec)
+            local tl = tmpVec:length()
+            if tl > 1e-5 then
+              tmpVec:setScaled(1 / tl)
+              local widenSign = -sign2(tmpVec:dot(n.normal))
+              local delta = t * liftMax * widenSign
+              local roadHalfWidth = n.halfWidth
+              local roadLimRight = max(0, roadHalfWidth - roadWidthMargin)
+              local limL = max(n.laneLimLeft + laneWidthMargin, -roadLimRight) + max(0, liftPlan.offset or 0)
+              local limR = min(n.laneLimRight - laneWidthMargin, roadLimRight) + min(0, liftPlan.offset or 0)
+              local newLat = clamp(n.lateralXnorm + delta, limL, limR)
+              if newLat ~= n.lateralXnorm then
+                n.lateralXnorm = newLat
+                n.pos:setScaled2(n.normal, newLat)
+                n.pos:setAdd(n.posOrig)
+              end
+            end
+          end
+        end
+      end
+      for i = 2, liftPlan.planCount do
+        liftPlan[i].vec:setSub2(liftPlan[i - 1].pos, liftPlan[i].pos)
+        liftPlan[i].vec.z = 0
+        liftPlan[i].dirVec:set(liftPlan[i].vec)
+        liftPlan[i].dirVec:normalize()
+      end
+      updatePlanLen(liftPlan, 2, liftPlan.planCount)
+    end
+    raceCornerLineLiftApply(plan)
+    if route.planL then raceCornerLineLiftApply(route.planL) end
+    if route.planR then raceCornerLineLiftApply(route.planR) end
+  end
 
   -------########## Error Distribution ##########---------
   --profilerPopEvent("ai_error_smoother")
@@ -3185,6 +3360,7 @@ local function raceplanAhead(route, baseRoute, pmode)
 
   ------######## Speed Planning ########-----
   local totalAccel = min(aggression, ego.staticFrictionCoef) * g
+  if opt.racing and parameters.raceAccelScale then totalAccel = totalAccel * parameters.raceAccelScale end -- state-based: no scale
 
   local lastNode = plan[plan.planCount]
   if route.path[lastNode.pathidx+1] or (loopPath and noOfLaps and noOfLaps > 1) then
@@ -3231,7 +3407,33 @@ local function raceplanAhead(route, baseRoute, pmode)
   calculateTrafficTargetSpeed(plan, traffic.trafficTable)
 
   plan.originaltargetSpeed = plan.targetSpeed -- save target speed computed by geometry only
-  plan.targetSpeed = min(plan.targetSpeed, plan.trafficTargetSpeed)
+  local geoTS = plan.targetSpeed
+  local mergedTS = min(geoTS, plan.trafficTargetSpeed)
+  -- Racing: when clearly wide of the intended line, ease traffic cap toward geometric speed (never above geoTS).
+  -- latMag always uses route.plan (main) so planL/planR scoring measures lateral error vs intended path, not offset polylines.
+  if opt.racing and type(parameters.raceWideLineTrafficBlend) == 'number' and parameters.raceWideLineTrafficBlend > 0 then
+    local refPlan = route.plan
+    local es = (refPlan and type(refPlan.egoSeg) == 'number' and refPlan.egoSeg) or plan.egoSeg or 1
+    if refPlan and refPlan.planCount and es > refPlan.planCount - 1 then
+      es = max(1, refPlan.planCount - 1)
+    end
+    local pn = refPlan and refPlan[es]
+    local pn1 = refPlan and refPlan[es + 1]
+    if pn and pn1 then
+      local p1, p2 = pn.pos, pn1.pos
+      local xn = ego.pos:xnormOnLine(p1, p2)
+      if xn < 0 then xn = 0 elseif xn > 1 then xn = 1 end
+      local onL = p1 + (p2 - p1) * xn
+      local latMag = abs((ego.pos - onL):dot(pn.normal))
+      local lat0 = (type(parameters.raceWideLineLateralStartM) == 'number' and parameters.raceWideLineLateralStartM) or 0.85
+      local lat1 = (type(parameters.raceWideLineLateralEndM) == 'number' and parameters.raceWideLineLateralEndM) or 2.5
+      if lat1 <= lat0 then lat1 = lat0 + 0.01 end
+      local tWide = clamp((latMag - lat0) / (lat1 - lat0), 0, 1)
+      local relief = tWide * clamp(parameters.raceWideLineTrafficBlend, 0, 1)
+      mergedTS = mergedTS + relief * (geoTS - mergedTS)
+    end
+  end
+  plan.targetSpeed = mergedTS
 
   ------######## Return #########--------
   return route
@@ -3574,7 +3776,7 @@ local function planAhead(route, baseRoute)
   for plID, v in pairs(mapmgr.getObjects()) do
     if plID ~= objectId and (M.mode ~= 'chase' or plID ~= player.id or internalState.chaseData.playerState == 'stopped') then
       v.targetType = (player and plID == player.id) and M.mode
-      if opt.avoidCars == 'on' or v.targetType == 'follow' then
+      if opt.racing or opt.avoidCars == 'on' or v.targetType == 'follow' then
         v.length = obj:getObjectInitialLength(plID) + 0.3
         v.width = obj:getObjectInitialWidth(plID)
         local posFront = obj:getObjectFrontPosition(plID)
@@ -3582,6 +3784,10 @@ local function planAhead(route, baseRoute)
         v.posFront = dirVec * 0.3 + posFront
         v.posRear = dirVec * (-v.length) + posFront
         v.posMiddle = (v.posFront + v.posRear) * 0.5
+        if opt.racing and plan.clearanceScale then
+          v.effectiveLength = v.length * plan.clearanceScale
+          v.effectiveWidth = v.width * plan.clearanceScale
+        end
         --obj.debugDrawProxy:drawSphere(traffic.Rfs, ego.pos, color(0,0,0,50))
         --obj.debugDrawProxy:drawSphere(traffic.Rfl, ego.pos, color(255,0,0,50))
 
@@ -4261,6 +4467,7 @@ local function planAhead(route, baseRoute)
 
   -- Speed Planning --
   local totalAccel = min(aggression, ego.staticFrictionCoef) * g
+  if opt.racing and parameters.raceAccelScale then totalAccel = totalAccel * parameters.raceAccelScale end -- state-based: no scale
 
   local lastNode = plan[plan.planCount]
   if route.path[lastNode.pathidx+1] or (loopPath and noOfLaps and noOfLaps > 1) then
@@ -5559,6 +5766,7 @@ local function modeAdjustments()
 
         -- create Left plan
         if mainPlan.distancesV < 10000 then
+          if altPlanRunAltPlans then
           -- Initialize Left plan
           mainPlan.buildN = true
           if not currentRoute.planL then
@@ -5669,6 +5877,7 @@ local function modeAdjustments()
           else
             currentRoute.plan_index = nil
             currentRoute.offset = nil
+          end
           end
         else
           currentRoute.offset = nil
@@ -5894,6 +6103,7 @@ end
 M.updateGFX = nop
 local function updateGFX(dtGFX)
   dt = dtGFX
+  altPlanRunAltPlans = not altPlanRunAltPlans
   if traffic.rateQue > 0 then
     traffic.frameQue = traffic.frameQue + 1
   end
@@ -6084,15 +6294,21 @@ local function updateGFX(dtGFX)
     speedDif = targetSpeedDifSmoother:getWithRate(speedDif, dt, rate)
 
     local legalSpeedDif = plan.targetSpeedLegal - ego.speed
-    local lowSpeedDif = min(speedDif - clamp((ego.speed - 2) * 0.5, 0, 1), legalSpeedDif) * parameters.throttleKp
+    local throttleKpEffective = (opt.racing and (parameters.raceThrottleKp or 1)) or parameters.throttleKp
+    local lowSpeedDif = min(speedDif - clamp((ego.speed - 2) * 0.5, 0, 1), legalSpeedDif) * throttleKpEffective
     local lowTargSpeedConstBrake = lowTargetSpeedVal - targetSpeed -- apply constant brake below some targetSpeed
 
     local throttle = clamp(lowSpeedDif, 0, 1) * sign(max(0, -lowTargSpeedConstBrake)) -- throttle not enganged for targetSpeed < 0.26
+    -- Race: request 100% when below target so accel matches player; TCS/slip in driveToTarget will cut in if they spin
+    if opt.racing and speedDif > 0.5 and throttle > 0 then throttle = 1 end
 
     local brakeLimLow = sign(max(0, lowTargSpeedConstBrake)) * 0.5
 
     local brake = sign(max(0, (electrics.values.smoothShiftLogicAV or 0) - 3))
     brake = clamp(-speedDif, brakeLimLow, 1) * brake -- arcade autobrake comes in at |smoothShiftLogicAV| < 5
+    if opt.racing and brake > 0 then
+      brake = min(1, brake * 1.15)
+    end
 
     if brake > 0 and abs(speedDif) < 0.5 and lastCommand.throttle == 0 and lastCommand.brake == 0 then
       -- check if deceleration without braking is larger or equal to the desired deceleration

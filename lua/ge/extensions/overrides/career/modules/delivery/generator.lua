@@ -362,9 +362,23 @@ local function getDeliveryVehicleTemplates()
   return templates
 end
 
-local function getRandomVehicleFromFilterByFilterId(filterId)
+local function getVehicleFilterByIdSafe(filterId, context)
   getDeliveryVehicleTemplates()
   local filter = sharedTemplates.getVehicleFilterById(filterId)
+  if filter then
+    return filter
+  end
+
+  log("E", "", string.format("%s: unknown vehicle filterId '%s'", context or "delivery.generator", tostring(filterId)))
+  return nil
+end
+
+local function getRandomVehicleFromFilterByFilterId(filterId)
+  local filter = getVehicleFilterByIdSafe(filterId, "getRandomVehicleFromFilterByFilterId")
+  if not filter then
+    return nil
+  end
+
   local infos = util_configListGenerator.getRandomVehicleInfos(filter, 1, eligibleVehicles)
   if next(infos) then
     return infos[1], (filter.filterName or "Vehicle")
@@ -407,7 +421,10 @@ local function finalizeVehicleOffer(offer)
 
     offer.data.originalDistance = distance
 
-    local filter = sharedTemplates.getVehicleFilterById(offer.vehicle.filterId)
+    local filter = getVehicleFilterByIdSafe(offer.vehicle.filterId, "finalizeVehicleOffer")
+    if not filter then
+      return
+    end
 
     offer.rewards = sharedCalc.getVehicleOfferReward(filter, distance, offer.data.type, offer.organization)
   end
@@ -493,7 +510,12 @@ local function triggerVehicleOfferGenerator(fac, generator, timeOffset)
       goto continue
     end
 
-    local vehType = sharedTemplates.getVehicleFilterById(generator.filter).type
+    local vehicleFilter = getVehicleFilterByIdSafe(generator.filter, "triggerVehicleOfferGenerator")
+    if not vehicleFilter then
+      goto continue
+    end
+
+    local vehType = vehicleFilter.type
 
     local task, type, name
     if vehType == "vehicle" then
@@ -533,7 +555,7 @@ local function triggerVehicleOfferGenerator(fac, generator, timeOffset)
 
       vehicle = {
         filterId = generator.filter,
-        unlockTag = sharedTemplates.getVehicleFilterById(generator.filter).unlockTag,
+        unlockTag = vehicleFilter.unlockTag,
       },
       locations = {origin, dropOff},
       dropOffFacId = dropOff.facId,
@@ -785,12 +807,12 @@ local function splitOffPartsFromMaterialCargo(cargo, otherPartSizes)
     -- copy slots/weight get set to what goes into storage
     copy.slots = size
     copy.weight = materialData.density * copy.slots
-    copy.rewards.money = sharedCalc.applyHardcoreMultiplier(copy.slots * materialData.money)
+    copy.rewards.money = copy.slots * materialData.money
     table.insert(ret, copy)
 
     cargo.slots = cargo.slots - size
     cargo.weight = materialData.density * cargo.slots
-    cargo.rewards.money = sharedCalc.applyHardcoreMultiplier(cargo.slots * materialData.money)
+    cargo.rewards.money = cargo.slots * materialData.money
 
     -- Apply economy adjuster to both
     local ecoSection = "delivery_" .. (materialData.type or "fluid")
@@ -824,12 +846,12 @@ local function moveMaterialToDestination(cargo, destination)
     -- cargo slots/weight get reduced
     cargo.slots = cargo.slots - amountForTank
     cargo.weight = materialData.density * cargo.slots
-    cargo.rewards.money = sharedCalc.applyHardcoreMultiplier(cargo.slots * materialData.money)
+    cargo.rewards.money = cargo.slots * materialData.money
 
     -- copy slots/weight get set to what goes into storage
     copy.slots = amountForTank
     copy.weight = materialData.density * copy.slots
-    copy.rewards.money = sharedCalc.applyHardcoreMultiplier(copy.slots * materialData.money)
+    copy.rewards.money = copy.slots * materialData.money
 
     -- Apply economy adjuster to both
     local ecoSection = "delivery_" .. (materialData.type or "fluid")
@@ -837,7 +859,7 @@ local function moveMaterialToDestination(cargo, destination)
     copy.rewards.money = sharedCalc.applyEconomyAdjuster(copy.rewards.money, ecoSection)
 
     -- move copy to the destination
-    dParcelManager.changeCargoLocation(cargo.id, destination)
+    dParcelManager.changeCargoLocation(copy.id, destination)
 
     return copy, cargo
   end
@@ -1375,9 +1397,15 @@ local function setup(loadData)
   if loadData.vehicleOffers and next(loadData.vehicleOffers) then
     log("I","","Loading Vehicle Offers from file... " .. #loadData.vehicleOffers)
     for _, offer in ipairs(loadData.vehicleOffers) do
+      local filterId = offer and offer.vehicle and offer.vehicle.filterId
+      if not getVehicleFilterByIdSafe(filterId, "loadVehicleOffers") then
+        goto continue
+      end
+
       cargoId = cargoId + 1
       offer.id = cargoId
       dVehOfferManager.addOffer(offer)
+      ::continue::
     end
   else
     log("I","","Generating initial Vehicle Offers...")

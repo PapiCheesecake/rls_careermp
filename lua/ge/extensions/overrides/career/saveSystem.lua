@@ -14,6 +14,14 @@ local pendingVehiclesThumbnailUpdate
 local currentSaveSlot
 local currentSavePath
 
+-- Start Nisch additions
+local ffbDisabledForSave = false
+local ffbSettleFrames = 0
+local ffbRestoreFrames = 0
+local FFB_SETTLE_DELAY = 20
+local FFB_RESTORE_DELAY = 10
+-- End Nisch additions
+
 local function getAllAutosaves(slotName)
   local res = {}
   local folders = FS:directoryList(saveRoot .. slotName, false, true)
@@ -165,6 +173,51 @@ local function renameSaveSlot(slotName, newName)
   end
 end
 
+local function duplicateSaveSlot(slotName, newName)
+  if not isLegalDirectoryName(slotName) or not isLegalDirectoryName(newName) then
+    return false
+  end
+  if slotName == newName then
+    return false
+  end
+  local src = saveRoot .. slotName
+  local dst = saveRoot .. newName
+  if not FS:directoryExists(src) or FS:directoryExists(dst) then
+    return false
+  end
+
+  if currentSaveSlot == slotName and career_career.isActive() then
+    M.saveCurrent(nil, true)
+  end
+
+  local files = FS:findFiles(src .. "/", "*.*", -1, true, true)
+  if not files or tableSize(files) == 0 then
+    return false
+  end
+
+  local ok = true
+  for i = 1, tableSize(files) do
+    local srcPath = files[i]
+    if not FS:directoryExists(srcPath) then
+      local dstPath = dst .. string.sub(srcPath, #src + 2)
+      local parentDir = path.split(dstPath)
+      if parentDir and parentDir ~= "" and not FS:directoryExists(parentDir) then
+        FS:directoryCreate(parentDir, true)
+      end
+      if FS:copyFile(srcPath, dstPath) ~= 0 then
+        ok = false
+        break
+      end
+    end
+  end
+
+  if not ok then
+    FS:directoryRemove(dst)
+    return false
+  end
+  return true
+end
+
 local function getCurrentSaveSlot()
   return currentSaveSlot, currentSavePath
 end
@@ -194,6 +247,43 @@ local function jsonWriteFileSafe(filename, obj, pretty, numberPrecision, tempFil
   return false
 end
 
+local function getFFBConfigForVeh(veh)
+  local result = {}
+  for _, action in ipairs({"steering", "accelerate", "brake"}) do
+    local FFBID = veh:getFFBID(action)
+    if FFBID >= 0 then
+      local configStr = be:getFFBConfig(FFBID)
+      local ok, ffbConfig = pcall(json.decode, configStr)
+      if ok and ffbConfig then
+        local ok2, ffbParams = pcall(json.decode, ffbConfig.ffbParamsJson)
+        if ok2 and ffbParams then
+          ffbConfig.ffbParams = ffbParams
+          ffbConfig.FFBID = FFBID
+          result[action] = ffbConfig
+        end
+      end
+    end
+  end
+  return result
+end
+
+local function restoreFFBActual()
+  local playerVeh = be:getPlayerVehicle(0)
+  if playerVeh then
+    playerVeh:queueLuaCommand("hydros.enableFFB = true")
+    local ffbConfig = getFFBConfigForVeh(playerVeh)
+    if ffbConfig and next(ffbConfig) then
+      playerVeh:queueLuaCommand("hydros.onFFBConfigChanged("..serialize(ffbConfig)..")")
+    end
+  end
+  ffbDisabledForSave = false
+end
+
+local function restoreFFB()
+  if not ffbDisabledForSave then return end
+  ffbRestoreFrames = FFB_RESTORE_DELAY
+end
+
 local function saveCompleted()
   if infoData then
     infoData.corrupted = nil
@@ -202,11 +292,13 @@ local function saveCompleted()
       guihooks.trigger("toastrMsg", {type="success", title="Game Saved", msg=""})
       log("I", "Saved to " .. oldestSave)
       currentSavePath = oldestSave -- update the currentSavePath
+      restoreFFB() -- Restore the FFB
       extensions.hook("onSaveFinished")
       return
     end
   end
 
+  restoreFFB()
   guihooks.trigger("toastrMsg", {type="error", title="Game Save failed", msg= "Saving failed!"})
   log("E", "Saving to " .. oldestSave ..  " failed!")
 end
@@ -222,7 +314,22 @@ local function asyncSaveExtensionFinished(extName)
   end
 end
 
-local function saveCurrentActual(vehiclesThumbnailUpdate)
+local saveCurrentActual
+
+local function disableFFBForSave()
+  local playerVeh = be:getPlayerVehicle(0)
+  if playerVeh then
+    playerVeh:queueLuaCommand("hydros.destroy(); hydros.enableFFB = false")
+    ffbDisabledForSave = true
+    ffbSettleFrames = FFB_SETTLE_DELAY
+  else --No Vehicle
+    saveCurrentActual(pendingVehiclesThumbnailUpdate)
+    pendingVehiclesThumbnailUpdate = nil
+    queueSave = false
+  end
+end
+
+saveCurrentActual = function(vehiclesThumbnailUpdate)
   if not currentSaveSlot or career_modules_linearTutorial.isLinearTutorialActive() then return end
   oldestSave, oldSaveDate = getAutosave(currentSaveSlot, true) -- get oldest autosave to overwrite
   saveDate = os.date("!%Y-%m-%dT%H:%M:%SZ") -- UTC time
@@ -270,12 +377,28 @@ local function saveCurrent(vehiclesThumbnailUpdate, force)
 end
 
 local function onUpdate()
-  if queueSave then
-    local playerVeh = be:getPlayerVehicle(0)
-    if not playerVeh or playerVeh:getVelocity():length() < 2 then
+  if ffbRestoreFrames > 0 then
+    ffbRestoreFrames = ffbRestoreFrames - 1
+    if ffbRestoreFrames == 0 then
+      restoreFFBActual()
+    end
+    return
+  end
+
+  if ffbSettleFrames > 0 then
+    ffbSettleFrames = ffbSettleFrames - 1
+    if ffbSettleFrames == 0 then
       saveCurrentActual(pendingVehiclesThumbnailUpdate)
       pendingVehiclesThumbnailUpdate = nil
       queueSave = false
+    end
+    return
+  end
+
+  if queueSave then
+    local playerVeh = be:getPlayerVehicle(0)
+    if not playerVeh or playerVeh:getVelocity():length() < 2 then
+      disableFFBForSave()
     end
   end
 end
@@ -323,6 +446,7 @@ M.onUpdate = onUpdate
 M.setSaveSlot = setSaveSlot
 M.removeSaveSlot = removeSaveSlot
 M.renameSaveSlot = renameSaveSlot
+M.duplicateSaveSlot = duplicateSaveSlot
 M.getCurrentSaveSlot = getCurrentSaveSlot
 M.saveCurrent = saveCurrent
 M.getAllSaveSlots = getAllSaveSlots

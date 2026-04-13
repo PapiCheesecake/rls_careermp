@@ -51,9 +51,7 @@
 {"name":"dirt_decalroads","class":"SimGroup","persistentId":"7e994dc8-9f15-4a28-8820-c93649f2b790","__parent":"MissionGroup"}
 {"name":"quarry","class":"SimGroup","persistentId":"73e07564-bcdc-4d9f-87ce-a4bcba3fb33c","__parent":"MissionGroup"}
 {"name":"RLS_EDITS","class":"SimGroup","__parent":"MissionGroup"}
-{"name":"Mesh Spline 7","class":"SimGroup","__parent":"MissionGroup"}
 {"name":"ASOTV","class":"SimGroup","__parent":"MissionGroup"}
 {"name":"JoesJunk","class":"SimGroup","__parent":"MissionGroup"}
-{"name":"RaceTab","class":"SimGroup","__parent":"MissionGroup"}
-{"name":"BeamNGTrigger_1","class":"BeamNGTrigger","__parent":"MissionGroup","position":[-306.998108,-160.236328,121.602058],"rotationMatrix":[-0.861292124,-0.508109868,-5.47970558e-11,0.508109868,-0.861292124,-1.01608484e-05,5.16278033e-06,-8.75148817e-06,1]}
-
+{"name":"racetab","class":"SimGroup","__parent":"MissionGroup"}
+{"name":"Slop Gear","class":"SimGroup","__parent":"MissionGroup"}

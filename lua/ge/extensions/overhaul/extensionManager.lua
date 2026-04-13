@@ -20,6 +20,7 @@ local function checkVersion()
     return true
 end
 
+-- Disabled the deactivation of BeamMP (for clear reasons)
 -- local function deactivateBeamMP()
 --     local beammp = core_modmanager.getMods()["multiplayerbeammp"]
 --     if beammp then
@@ -40,6 +41,7 @@ local function loadExtensions()
     setExtensionUnloadMode("gameplay_repo", "manual")
     setExtensionUnloadMode("gameplay_taxi", "manual")
     setExtensionUnloadMode("gameplay_cab", "manual")
+    setExtensionUnloadMode("gameplay_cardGames", "manual")
     setExtensionUnloadMode("gameplay_loading", "manual")
     setExtensionUnloadMode("gameplay_ambulance", "manual")
     setExtensionUnloadMode("gameplay_bus", "manual")
@@ -116,7 +118,7 @@ local function unloadAllExtensions()
 end
 
 local function startup()
-    -- deactivateBeamMP()
+    deactivateBeamMP()
 
     setExtensionUnloadMode("overhaul_overrideManager", "manual")
     extensions.load("overhaul_overrideManager")

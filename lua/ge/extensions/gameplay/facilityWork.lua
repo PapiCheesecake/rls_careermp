@@ -2,7 +2,7 @@
 -- FACILITY WORK
 -- ================================
 local M = {}
-M.dependencies = {'gameplay_sites_sitesManager', 'freeroam_facilities'}
+M.dependencies = {'gameplay_sites_sitesManager', 'freeroam_facilities', 'gameplay_phone'}
 
 local core_vehicles = require('core/vehicles')
 local utils = (function()
@@ -120,10 +120,14 @@ local truckLoadPropIds = {}
 local truckFacilityId = nil
 local truckLoadingDropTrigger = nil
 local TRUCK_BED_LOAD_RADIUS_M = 8  -- semi flatbed extends far behind cab; adjust if too lenient
+local TRUCK_FORKLIFT_OPEN_PHONE_RADIUS_M = 15  -- open phone / show message only when forklift is at least this far from truck
 local propsEligibleForTruckLoad = {}  -- pid -> true, props in zone that can be loaded (from deliveredPropsByZone)
 local truckLoadMaterialName = nil  -- material name for UI message, e.g. "TastiCola"
 local truckLoadTargetCount = nil   -- number to load (for tasklist), e.g. 4
+local truckLoadPropPay = {}        -- pid -> base pay (for 1.5x loading bonus, same as batch pay per prop)
 local selectedZoneNameForTruckLoad = nil  -- zone picked at dispatch so we show "Load N X" before truck arrives
+local truckFullyLoadedNotified = false    -- one-shot: notify phone when truck load reaches target
+local truckFullForkliftWasNear = false     -- true once forklift has been within 5m of truck while truck was full (avoids opening when prop alone was in range)
 
 local batchReadyWaitingForkliftExit = false
 local truckDispatchedForCurrentBatch = false
@@ -754,7 +758,12 @@ end
 
 local function getSessionMultiplierHeaderLabel()
     local mult = sessionMultiplier
-    local multStr = (mult == math.floor(mult)) and tostring(mult) or string.format("%.1f", mult)
+    local multStr
+    if mult == math.floor(mult) then
+        multStr = tostring(mult)
+    else
+        multStr = string.format("%.2f", mult)
+    end
     return "On duty: x" .. multStr
 end
 
@@ -789,17 +798,58 @@ local function getAvailableFacilities()
     return list
 end
 
+local function scaleFacilityWorkMoneyAndRep(money, rep, orgId)
+    local scaledMoney = math.max(0, math.floor(tonumber(money) or 0))
+    local scaledRep = math.floor(tonumber(rep) or 0)
+    if not (career_modules_difficultyMode and career_modules_difficultyMode.scalePaymentRewardData) then
+        return scaledMoney, scaledRep
+    end
+
+    local rewardData = {
+        money = { amount = scaledMoney }
+    }
+    if orgId and scaledRep ~= 0 then
+        rewardData[orgId .. "Reputation"] = { amount = scaledRep }
+    end
+    career_modules_difficultyMode.scalePaymentRewardData(rewardData, {includeMoney = false})
+    if orgId and scaledRep ~= 0 then
+        scaledRep = math.floor((rewardData[orgId .. "Reputation"] and rewardData[orgId .. "Reputation"].amount or scaledRep) + 0.5)
+    end
+    return scaledMoney, scaledRep
+end
+
+local function scaleFacilityWorkBeamXP(xp)
+    local scaledXp = math.max(0, math.floor(tonumber(xp) or 0))
+    if scaledXp <= 0 then
+        return 0
+    end
+    if career_modules_difficultyMode and career_modules_difficultyMode.scaleFlatRewards then
+        local rewardData = { beamXP = scaledXp }
+        career_modules_difficultyMode.scaleFlatRewards(rewardData, {includeMoney = false})
+        scaledXp = math.max(0, math.floor((tonumber(rewardData.beamXP) or scaledXp) + 0.5))
+    end
+    return scaledXp
+end
+
+local function getSessionDisplayTotals()
+    return sessionTotalPay, sessionTotalRep
+end
+
 local function getFacilityWorkState()
+    local displayPay, displayRep = getSessionDisplayTotals()
+    local targetCount = truckLoadTargetCount or TRUCK_LOAD_COUNT
+    local truckFullyLoaded = (truckState == "waiting_for_load") and (#truckLoadPropIds >= targetCount)
     return {
         onDuty = (currentBatch ~= nil or currentForkliftId ~= nil),
-        sessionTotalPay = sessionTotalPay,
-        sessionTotalRep = sessionTotalRep,
+        sessionTotalPay = displayPay,
+        sessionTotalRep = displayRep,
         sessionMaterialsMoved = sessionMaterialsMoved,
         available = isFacilityWorkAvailable(),
         facilities = getAvailableFacilities(),
         selectedFacilityId = selectedFacilityId,
         preferredBatchSize = preferredBatchSize,
-        truckWaitingForLoad = (truckState == "waiting_for_load")
+        truckWaitingForLoad = (truckState == "waiting_for_load"),
+        truckFullyLoaded = truckFullyLoaded
     }
 end
 
@@ -808,18 +858,28 @@ local function notifyPhoneState()
 end
 
 local function updateTasklistValues()
+    local displayPay, displayRep = getSessionDisplayTotals()
     guihooks.trigger('SetTasklistHeader', { label = getSessionMultiplierHeaderLabel() })
-    guihooks.trigger('SetTasklistTask', { id = "facilityWork_total_pay", label = "Total pay: $" .. sessionTotalPay, type = "message", clear = false })
-    guihooks.trigger('SetTasklistTask', { id = "facilityWork_total_rep", label = "Total rep: " .. sessionTotalRep, type = "message", clear = false })
+    guihooks.trigger('SetTasklistTask', { id = "facilityWork_total_pay", label = "Total pay: $" .. displayPay, type = "message", clear = false })
+    guihooks.trigger('SetTasklistTask', { id = "facilityWork_total_rep", label = "Total rep: " .. displayRep, type = "message", clear = false })
 
     -- Next-stop line removed; multiplier is shown in task list header instead.
     guihooks.trigger('SetTasklistTask', { id = "facilityWork_next_stop", label = "", type = "message", clear = true })
 
     if truckState == "driving_to_pickup" or truckState == "waiting_for_load" then
         if truckLoadMaterialName and truckLoadTargetCount then
-            local loadLabel = string.format("Load %d %s onto the truck", truckLoadTargetCount, truckLoadMaterialName)
-            if currentBatch then
-                loadLabel = "Finish your current batch, then " .. loadLabel
+            local targetCount = truckLoadTargetCount or TRUCK_LOAD_COUNT
+            local loadLabel
+            if #truckLoadPropIds >= targetCount then
+                loadLabel = "Truck full. Open phone to send."
+                if currentBatch then
+                    loadLabel = "Truck full. Finish batch or open phone to send."
+                end
+            else
+                loadLabel = string.format("Load %d %s onto the truck", truckLoadTargetCount, truckLoadMaterialName)
+                if currentBatch then
+                    loadLabel = "Finish your current batch, then " .. loadLabel
+                end
             end
             guihooks.trigger('SetTasklistTask', { id = "facilityWork_truck_load", label = loadLabel, type = "message", clear = false })
         else
@@ -926,9 +986,9 @@ local function spawnBatch(facilityId)
     if not dropTrigger then return false end
     local spawns = facCfg.spawns or {}
     if #spawns == 0 then return false end
-    local baseSize = tonumber(facCfg.batchSize) or 8
-    local batchSize = preferredBatchSize or baseSize
-    batchSize = math.max(1, batchSize)
+    local maxBatch = tonumber(facCfg.batchSize) or 8
+    local batchSize = preferredBatchSize or maxBatch
+    batchSize = math.max(1, math.min(batchSize, maxBatch))
     
     local spawnDef = spawns[math.random(1, #spawns)]
     local mat = materialsById[spawnDef.materialId]
@@ -1045,6 +1105,7 @@ local function clearTruckState()
         if obj then obj:delete() end
     end
     table.clear(truckLoadPropIds)
+    table.clear(truckLoadPropPay)
     table.clear(propsEligibleForTruckLoad)
     truckLoadMaterialName = nil
     truckLoadTargetCount = nil
@@ -1056,6 +1117,8 @@ local function clearTruckState()
     truckArrivedAtNodeIndex = nil
     truckFacilityId = nil
     truckLoadingDropTrigger = nil
+    truckFullyLoadedNotified = false
+    truckFullForkliftWasNear = false
 end
 
 local function getCurrentBatchZoneName()
@@ -1097,8 +1160,11 @@ end
 
 local function applyWaitingForLoadState()
     table.clear(truckLoadPropIds)
+    table.clear(truckLoadPropPay)
     table.clear(propsEligibleForTruckLoad)
     truckLoadingDropTrigger = nil
+    truckFullyLoadedNotified = false
+    truckFullForkliftWasNear = false
     local selectedZoneData = nil
     local currentZoneName = getCurrentBatchZoneName()
     -- Only use pre-selected zone if it exists and is cleared (not the current batch's drop zone)
@@ -1237,6 +1303,7 @@ local function payoutBatchAndSpawnNext()
         mult = career_economyAdjuster.getSectionMultiplier("facilityWork") or 1
     end
     totalMoney = math.floor(totalMoney * mult)
+    totalMoney, totalRep = scaleFacilityWorkMoneyAndRep(totalMoney, totalRep, currentBatch.organizationId)
     sessionTotalPay = sessionTotalPay + totalMoney
     sessionTotalRep = sessionTotalRep + totalRep
     sessionMaterialsMoved = sessionMaterialsMoved + #propIds
@@ -1248,8 +1315,10 @@ local function payoutBatchAndSpawnNext()
             deliveredPropsByZone[zoneName] = { trigger = currentBatch.dropTrigger, propIds = {}, materialName = matName }
         end
         deliveredPropsByZone[zoneName].materialName = matName
-        for _, pid in ipairs(propIds) do
+        deliveredPropsByZone[zoneName].moneyPerPropId = deliveredPropsByZone[zoneName].moneyPerPropId or {}
+        for i, pid in ipairs(propIds) do
             table.insert(deliveredPropsByZone[zoneName].propIds, pid)
+            deliveredPropsByZone[zoneName].moneyPerPropId[pid] = moneyPerProp[i] or 0
         end
         lastDeliveredZoneName = zoneName
     end
@@ -1260,6 +1329,7 @@ local function payoutBatchAndSpawnNext()
         for zName, data in pairs(deliveredPropsByZone) do
             while #data.propIds > 0 and currentTotal > MAX_PERSISTENT_PROPS do
                 local pid = table.remove(data.propIds, 1)
+                if data.moneyPerPropId then data.moneyPerPropId[pid] = nil end
                 local obj = be:getObjectByID(pid)
                 if obj then obj:delete() end
                 currentTotal = currentTotal - 1
@@ -1274,13 +1344,13 @@ local function payoutBatchAndSpawnNext()
     currentBatch = nil
     clearDropMarkers()
 
-    -- Increase session multiplier for next batch (per-facility config)
+    -- Increase session multiplier for next batch (per-facility config; kept low to avoid excessive earnings)
     local facCfg = facilityId and facilityConfigs[facilityId]
     local perBatch
     if facCfg then
-        perBatch = tonumber(facCfg.sessionMultiplierPerBatch) or 0.5
+        perBatch = tonumber(facCfg.sessionMultiplierPerBatch) or 0.15
     else
-        perBatch = 0.5
+        perBatch = 0.15
     end
     sessionMultiplier = sessionMultiplier + perBatch
 
@@ -1367,30 +1437,36 @@ local function endShiftCleanup()
 
     if career_career and career_career.isActive() and (sessionTotalPay ~= 0 or sessionTotalRep ~= 0) then
         local orgId = nil
+        local displayPay = sessionTotalPay
+        local displayRep = sessionTotalRep
         if selectedFacilityId and facilityConfigs[selectedFacilityId] then
             orgId = facilityConfigs[selectedFacilityId].organizationId
         end
         if career_modules_payment and career_modules_payment.reward then
             local rewardData = {
-                money = { amount = sessionTotalPay },
-                beamXP = { amount = math.floor(sessionTotalPay / 10) }
+                money = { amount = displayPay },
+                beamXP = { amount = scaleFacilityWorkBeamXP(math.floor(displayPay / 10)) }
             }
-            if orgId and sessionTotalRep ~= 0 then
-                rewardData[orgId .. "Reputation"] = { amount = sessionTotalRep }
+            if orgId and displayRep ~= 0 then
+                rewardData[orgId .. "Reputation"] = { amount = displayRep }
             end
             career_modules_payment.reward(rewardData, {
-                label = string.format("Facility work (shift): $%d | Rep +%d | %d materials", sessionTotalPay, sessionTotalRep, sessionMaterialsMoved),
+                label = string.format("Facility work (shift): $%d | Rep +%d | %d materials", displayPay, displayRep, sessionMaterialsMoved),
                 tags = {"facilityWork", "gameplay"}
             }, true)
         end
-     --  if career_saveSystem and career_saveSystem.saveCurrent then
-     --      career_saveSystem.saveCurrent()
-     --  end
+        if career_saveSystem and career_saveSystem.saveCurrent then
+            career_saveSystem.saveCurrent()
+        end
+        sessionTotalPay = displayPay
+        sessionTotalRep = displayRep
     end
 
     if utils and utils.displayMessage then
         local msg = string.format("Shift ended. Total earned: $%d | Rep: %d | Materials moved: %d",
-            sessionTotalPay, sessionTotalRep, sessionMaterialsMoved)
+            sessionTotalPay,
+            sessionTotalRep,
+            sessionMaterialsMoved)
         utils.displayMessage(msg, 6)
     end
 
@@ -1605,27 +1681,29 @@ local function onBeamNGTrigger(data)
                                 utils.displayMessage("All items delivered. Drive out of the drop zone to complete.", 4)
                             end
                         end
-                        local facilityId = currentBatch.facilityId
-                        local threshold = math.max(1, #currentBatch.propIds - 1)
-                        if not truckDispatchedForCurrentBatch and not truckState and sessionBatchesCompleted >= firstTruckAfterBatch and countIn >= threshold and facilityId then
-                            local facCfg = facilityConfigs[facilityId]
-                            if facCfg and facCfg.aiPickupRoadName and getRoadNodes(facCfg.aiPickupRoadName) and #(getRoadNodes(facCfg.aiPickupRoadName) or {}) > 0 then
-                                if getTotalDeliveredPropsCount() + #currentBatch.propIds >= TRUCK_LOAD_COUNT then
-                                    if spawnTruckAndDriveToPickup(facilityId) then
-                                        truckDispatchedForCurrentBatch = true
-                                        updateTasklistValues()
-                                    end
-                                end
-                            end
-                        end
+                        -- Truck spawns only on exit (in payoutBatchAndSpawnNext) to avoid stutter and props flying when spawning while still in zone
                         break
                     end
                 end
             end
         elseif event == "exit" then
-            if batchReadyWaitingForkliftExit and currentBatch and currentForkliftId and data.subjectID == currentForkliftId then
-                batchReadyWaitingForkliftExit = false
-                payoutBatchAndSpawnNext()
+            -- Only complete when the forklift has left the zone and all props are actually inside (count on forklift exit, not prop enter)
+            if currentBatch and currentForkliftId and data.subjectID == currentForkliftId and currentBatch.dropTrigger then
+                local trigger = currentBatch.dropTrigger
+                local countInside = 0
+                for _, pid in ipairs(currentBatch.propIds) do
+                    local obj = be:getObjectByID(pid)
+                    if obj and obj.getPosition then
+                        local pos = toVec3(obj:getPosition())
+                        if isPointInsideTriggerBox(pos, trigger) then
+                            countInside = countInside + 1
+                        end
+                    end
+                end
+                if countInside >= #currentBatch.propIds then
+                    batchReadyWaitingForkliftExit = false
+                    payoutBatchAndSpawnNext()
+                end
             end
         end
         return
@@ -1736,6 +1814,8 @@ local function onUpdate(_dtReal, _dtSim, _dtRaw)
                     local propDist = math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz)
                     if propDist < TRUCK_BED_LOAD_RADIUS_M then
                         table.insert(truckLoadPropIds, pid)
+                        truckLoadPropPay[pid] = (zoneData and zoneData.moneyPerPropId and zoneData.moneyPerPropId[pid]) or 0
+                        if zoneData and zoneData.moneyPerPropId then zoneData.moneyPerPropId[pid] = nil end
                         propsEligibleForTruckLoad[pid] = nil
                         if zoneData and zoneData.propIds then
                             for i = #zoneData.propIds, 1, -1 do
@@ -1754,16 +1834,47 @@ local function onUpdate(_dtReal, _dtSim, _dtRaw)
                 end
             end
         end
+        -- Only open phone when truck is full AND forklift was near the truck (so player actually delivered) then moved away (avoids trigger when prop alone enters 8m range before forklift)
+        if #truckLoadPropIds >= targetCount then
+            local forkliftPos = getForkliftPosition()
+            local truckPos = pos and toVec3(pos) or nil
+            if forkliftPos and truckPos then
+                local nearTruck = isPointNear(forkliftPos, truckPos, TRUCK_FORKLIFT_OPEN_PHONE_RADIUS_M)
+                if nearTruck then
+                    truckFullForkliftWasNear = true
+                end
+            end
+            if not truckFullyLoadedNotified and truckFullForkliftWasNear then
+                local awayFromTruck = forkliftPos and truckPos and not isPointNear(forkliftPos, truckPos, TRUCK_FORKLIFT_OPEN_PHONE_RADIUS_M)
+                if awayFromTruck then
+                    truckFullyLoadedNotified = true
+                    updateTasklistValues()
+                    if gameplay_phone and not gameplay_phone.isPhoneOpen() then
+                        gameplay_phone.togglePhone("Truck loaded. Open Facility Work to send it.")
+                    end
+                    if utils and utils.displayMessage then
+                        utils.displayMessage("Truck loaded. Open your phone to send it.", 4)
+                    end
+                end
+            end
+        end
     elseif truckState == "driving_to_end" then
         if dist < TRUCK_ARRIVAL_RADIUS_M then
             local facId = truckFacilityId
-            local bonus = TRUCK_LOADING_BONUS_DEFAULT
+            local flatBonus = TRUCK_LOADING_BONUS_DEFAULT
             if facId and facilityConfigs[facId] and facilityConfigs[facId].truckLoadingBonus then
-                bonus = tonumber(facilityConfigs[facId].truckLoadingBonus) or bonus
+                flatBonus = tonumber(facilityConfigs[facId].truckLoadingBonus) or flatBonus
             end
+            local perPropSum = 0
+            for _, pid in ipairs(truckLoadPropIds) do
+                perPropSum = perPropSum + (truckLoadPropPay[pid] or 0)
+            end
+            local bonus = flatBonus + math.floor(perPropSum * 1.5)
+            bonus = math.floor(bonus * sessionMultiplier)
             if career_economyAdjuster and career_economyAdjuster.getSectionMultiplier then
                 bonus = math.floor(bonus * (career_economyAdjuster.getSectionMultiplier("facilityWork") or 1))
             end
+            bonus = select(1, scaleFacilityWorkMoneyAndRep(bonus, 0, nil))
             sessionTotalPay = sessionTotalPay + bonus
             updateTasklistValues()
             clearTruckState()
@@ -1810,6 +1921,10 @@ function M.selectFacility(id)
     loadConfig()
     if id and facilityConfigs[id] then
         selectedFacilityId = id
+        local maxB = tonumber(facilityConfigs[id].batchSize) or 8
+        if preferredBatchSize and preferredBatchSize > maxB then
+            preferredBatchSize = maxB
+        end
         if not currentBatch and not currentForkliftId then
             if setWaypointToFacilityForklift(id) and utils and utils.displayMessage then
                 utils.displayMessage("Waypoint set to the loaner forklift.", 4)
@@ -1827,10 +1942,16 @@ end
 
 function M.setBatchSize(size)
     local s = tonumber(size)
-    if s and s >= 1 then
-        preferredBatchSize = math.floor(s)
-        notifyPhoneState()
+    if not s or s < 1 then
+        return
     end
+    loadConfig()
+    local maxB = 8
+    if selectedFacilityId and facilityConfigs[selectedFacilityId] then
+        maxB = tonumber(facilityConfigs[selectedFacilityId].batchSize) or 8
+    end
+    preferredBatchSize = math.max(1, math.min(math.floor(s), maxB))
+    notifyPhoneState()
 end
 
 function M.endFacilityWork()

@@ -13,6 +13,7 @@ M.dependencies = {
 -- Require necessary modules
 local configListGenerator = require('util.configListGenerator')
 local parking = require('gameplay.parking')
+local parkingReservation = require('gameplay.parkingReservation')
 local freeroam_facilities = require('freeroam.facilities')
 local gameplay_sites_sitesManager = require('gameplay.sites.sitesManager')
 local marker
@@ -74,14 +75,42 @@ function VehicleRepoJob:new()
     instance.spawnedVehicle = false
     instance.isCompleted = false
     instance.isCompleting = false
+    instance.reservationToken = nil
+    instance.reservedPickupSpot = nil
+    instance.reservedDeliverySpot = nil
+    instance.availableDealerships = nil
+    instance.pendingDeliveredDeleteId = nil
     if core_groundMarkers then
         core_groundMarkers.resetAll()
     end
+    instance.eligibleVehicles = nil
     return instance
+end
+
+function VehicleRepoJob:releasePickupReservation()
+    if self.reservedPickupSpot and self.reservationToken then
+        parkingReservation.releaseSpot(self.reservedPickupSpot, self.reservationToken)
+    end
+    self.reservedPickupSpot = nil
+end
+
+function VehicleRepoJob:releaseDeliveryReservation()
+    if self.reservedDeliverySpot and self.reservationToken then
+        parkingReservation.releaseSpot(self.reservedDeliverySpot, self.reservationToken)
+    end
+    self.reservedDeliverySpot = nil
+end
+
+function VehicleRepoJob:releaseReservations()
+    self:releasePickupReservation()
+    self:releaseDeliveryReservation()
+    self.reservationToken = nil
 end
 
 -- Reset to initial state (ready to generate new mission)
 function VehicleRepoJob:resetToInitialState()
+    self:releaseReservations()
+
     if self.vehicleId then
         if gameplay_traffic then
             pcall(function() gameplay_traffic.removeTraffic(self.vehicleId) end)
@@ -111,14 +140,22 @@ function VehicleRepoJob:resetToInitialState()
     self.spawnedVehicle = false
     self.isCompleted = false
     self.isCompleting = false
+    self.reservationToken = nil
+    self.reservedPickupSpot = nil
+    self.reservedDeliverySpot = nil
     self.reward = nil
     self.jobCoroutine = nil
     self.randomVehicleInfo = nil
     self.vehicleConfig = nil
     self.validSpots = nil
     self.selectedSpot = nil
+    self.availableDealerships = nil
+    self.pendingDeliveredDeleteId = nil
+    self.parkingSpots = nil
+    self.playerPosition = nil
     self.vehInfo = nil
     self.updateTimer = nil
+    self.eligibleVehicles = nil
     if core_groundMarkers then
         core_groundMarkers.resetAll()
     end
@@ -187,6 +224,9 @@ end
 
 -- Generate a new repo job
 function VehicleRepoJob:generateJob()
+    self:resetToInitialState()
+    self.reservationToken = parkingReservation.makeReservationToken("repo")
+
     -- Set loading state immediately
     local data = {
         state = "loading",
@@ -211,10 +251,20 @@ function VehicleRepoJob:generateJob()
 
         -- Select a dealership and yield
         self:selectDealership()
+        if not self.selectedDealership then
+            log("W", "repo", "No dealership found for repo job generation")
+            self:resetToInitialState()
+            return
+        end
         for i = 1, 5 do coroutine.yield() end
 
         -- Determine delivery location and yield
-        self:determineDeliveryLocation() 
+        self:determineDeliveryLocation()
+        if not self.deliveryLocation then
+            log("W", "repo", "No reservable dealership dropoff spot found for repo job generation")
+            self:resetToInitialState()
+            return
+        end
         for i = 1, 5 do coroutine.yield() end
 
         -- Filter valid parking spots and yield
@@ -223,10 +273,19 @@ function VehicleRepoJob:generateJob()
 
         -- Select a random valid parking spot and yield
         self:selectRandomSpot()
+        if not self.selectedSpot then
+            log("W", "repo", "No reservable pickup spot found for repo job generation")
+            self:resetToInitialState()
+            return
+        end
         for i = 1, 5 do coroutine.yield() end
 
         -- Generate vehicle configuration and yield
         self:generateVehicleConfig()
+        if not self.vehicleConfig then
+            self:resetToInitialState()
+            return
+        end
         for i = 1, 5 do coroutine.yield() end
 
         -- Wait for player vehicle to be stationary before spawning
@@ -239,6 +298,10 @@ function VehicleRepoJob:generateJob()
         -- Spawn the vehicle
         if not self.spawnedVehicle then
             self:spawnVehicle()
+            if not self.vehicleId then
+                self:resetToInitialState()
+                return
+            end
             self.spawnedVehicle = true
         end
         
@@ -308,20 +371,65 @@ function VehicleRepoJob:selectDealership()
     if not dealerships or #dealerships == 0 then
         return
     end
-    self.selectedDealership = dealerships[math.random(#dealerships)]
+    self.eligibleVehicles = configListGenerator.getEligibleVehicles(false, false)
+    self.availableDealerships = {}
+
+    for _, dealership in ipairs(parkingReservation.shuffleSpots(dealerships)) do
+        local vehicleInfos = configListGenerator.getRandomVehicleInfos(dealership, 1, self.eligibleVehicles, "adjustedPopulation")
+        if vehicleInfos and #vehicleInfos > 0 then
+            table.insert(self.availableDealerships, dealership)
+        else
+            log("I", "repo", string.format("Skipping dealership '%s'; no valid repo configs linked", tostring(dealership.name)))
+        end
+    end
+
+    self.selectedDealership = self.availableDealerships[1]
+end
+
+local function pickStaticFacilitySpot(spots)
+    for _, spot in ipairs(parkingReservation.shuffleSpots(spots or {})) do
+        if spot and spot.pos then
+            return spot
+        end
+    end
 end
 
 -- Determine the delivery location
 function VehicleRepoJob:determineDeliveryLocation()
-    self.deliveryLocation = gameplay_sites_sitesManager.getBestParkingSpotForVehicleFromList(nil,
-        freeroam_facilities.getParkingSpotsForFacility(self.selectedDealership))
+    self.deliveryLocation = nil
+    self:releaseDeliveryReservation()
+
+    local dealerships = self.availableDealerships or (self.selectedDealership and {self.selectedDealership} or {})
+    for _, dealership in ipairs(dealerships) do
+        local facilitySpots = freeroam_facilities.getParkingSpotsForFacility(dealership) or {}
+        local liveDeliverySpot = parkingReservation.findReservableSpot(parkingReservation.shuffleSpots(facilitySpots), self.reservationToken)
+        if liveDeliverySpot then
+            self.selectedDealership = dealership
+            self.deliveryLocation = liveDeliverySpot
+            self.reservedDeliverySpot = liveDeliverySpot
+            return
+        end
+
+        -- Some facility site spots are not present in the live parking pool, so reservation can fail
+        -- even though the facility has a valid dropoff location. Use a static site spot as a fallback.
+        local staticDeliverySpot = pickStaticFacilitySpot(facilitySpots)
+        if staticDeliverySpot then
+            self.selectedDealership = dealership
+            self.deliveryLocation = staticDeliverySpot
+            self.reservedDeliverySpot = nil
+            log("W", "repo", string.format("Using unreserved static dropoff spot for dealership '%s'", tostring(dealership.name)))
+            return
+        end
+
+        log("I", "repo", string.format("Rerolling dealership '%s'; no reservable dropoff spot found", tostring(dealership.name)))
+    end
 end
 
 -- Filter valid parking spots based on distance criteria
 function VehicleRepoJob:filterValidSpots()
     self.validSpots = {}
     for _, spot in pairs(self.parkingSpots.objects) do
-        if spot.pos and not spot.vehicle then
+        if spot.pos then
             local distanceFromPlayer = (spot.pos - self.playerPosition):length()
             local distanceFromDestination = (spot.pos - self.deliveryLocation.pos):length()
             if distanceFromPlayer >= 300 and distanceFromDestination >= 600 then
@@ -333,17 +441,26 @@ end
 
 -- Select a random valid parking spot
 function VehicleRepoJob:selectRandomSpot()
+    self.selectedSpot = nil
+    self:releasePickupReservation()
+
     if #self.validSpots == 0 then
         return
     end
-    self.selectedSpot = self.validSpots[math.random(#self.validSpots)]
+
+    local livePickupSpot = parkingReservation.findReservableSpot(parkingReservation.shuffleSpots(self.validSpots), self.reservationToken)
+    if livePickupSpot then
+        self.selectedSpot = livePickupSpot
+        self.reservedPickupSpot = livePickupSpot
+    end
 end
 
 -- Generate vehicle configuration
 function VehicleRepoJob:generateVehicleConfig()
-    local eligibleVehicles = configListGenerator.getEligibleVehicles(false, false)
+    local eligibleVehicles = self.eligibleVehicles or configListGenerator.getEligibleVehicles(false, false)
     local randomVehicleInfos = configListGenerator.getRandomVehicleInfos(self.selectedDealership, 1, eligibleVehicles, "adjustedPopulation")
     if not randomVehicleInfos or #randomVehicleInfos == 0 then
+        log("W", "repo", string.format("Selected dealership '%s' had no valid repo configs during vehicle generation", tostring(self.selectedDealership and self.selectedDealership.name)))
         return
     end
 
@@ -361,7 +478,15 @@ function VehicleRepoJob:generateVehicleConfig()
     end
 
     if career_career.isActive() then
-        self.vehicleValue = career_modules_valueCalculator.getAdjustedVehicleBaseValue(self.randomVehicleInfo.Value, {
+        self.vehicleValue = career_modules_valueCalculator.getVehicleCatalogIntrinsicBookValue({
+            catalogBaseValue = self.randomVehicleInfo.Value,
+            mileageMeters = self.randomVehicleInfo.Mileage,
+            age = 2025 - self.randomVehicleInfo.year,
+            modelName = self.randomVehicleInfo.model_key,
+            configKey = self.randomVehicleInfo.key,
+            logContext = "repo",
+            applyVehicleBuyMarket = false
+        }) or career_modules_valueCalculator.getAdjustedVehicleBaseValue(self.randomVehicleInfo.Value, {
             mileage = self.randomVehicleInfo.Mileage,
             age = 2025 - self.randomVehicleInfo.year
         })
@@ -444,25 +569,33 @@ function VehicleRepoJob:calculateReward()
     end
     local distanceMultiplier = self.totalDistanceTraveled * 2
     local timeMultiplier = (self.totalDistanceTraveled / ((os.time() - self.jobStartTime) * 10))
-    local reward = math.floor((((5 * math.sqrt(self.vehicleValue or 1000)) + distanceMultiplier) * timeMultiplier)/ 4)
-    reward = reward * 1.25 + 1000
-    if career_modules_hardcore.isHardcoreMode() then
-        reward = reward * 0.4
-    end
-
-    print("Base repo reward: " .. reward)
+    local baseReward = math.floor((((5 * math.sqrt(self.vehicleValue or 1000)) + distanceMultiplier) * timeMultiplier)/ 4) / 15
+    baseReward = baseReward * 1.25 + 1000
+    print("Base repo reward: " .. baseReward)
 
     -- Apply economy adjuster if available
-    local adjustedReward = reward
+    local adjustedReward = baseReward
+    local repoMultiplier = 1.0
     if career_economyAdjuster then
         -- Use repo type multiplier for repo jobs
-        local multiplier = career_economyAdjuster.getSectionMultiplier("repo")
-        adjustedReward = reward * multiplier
+        repoMultiplier = career_economyAdjuster.getSectionMultiplier("repo") or 1.0
+        adjustedReward = baseReward * repoMultiplier
         adjustedReward = math.floor(adjustedReward + 0.5) -- Round to nearest integer
-        print("Adjusted repo reward: " .. adjustedReward .. " (multiplier: " .. string.format("%.2f", multiplier) .. ")")
+        print("Adjusted repo reward: " .. adjustedReward .. " (multiplier: " .. string.format("%.2f", repoMultiplier) .. ")")
     end
 
-    return adjustedReward
+    -- Fallback for reward calculation paths where repo economy multiplier was not applied yet.
+    if career_modules_difficultyMode
+        and career_modules_difficultyMode.isDifficultyActive
+        and career_modules_difficultyMode.isDifficultyActive()
+        and career_modules_difficultyMode.getRewardMultiplier then
+        local difficultyMultiplier = tonumber(career_modules_difficultyMode.getRewardMultiplier()) or 1.0
+        if difficultyMultiplier ~= 1.0 and repoMultiplier == 1.0 then
+            adjustedReward = math.floor((adjustedReward * difficultyMultiplier) + 0.5)
+        end
+    end
+
+    return adjustedReward, baseReward
 end
 
 
@@ -476,7 +609,10 @@ function VehicleRepoJob:onUpdate(dtReal, dtSim, dtRaw)
     if self.jobCoroutine and coroutine.status(self.jobCoroutine) ~= "dead" then
         local success, message = coroutine.resume(self.jobCoroutine)
         if not success then
+            log("E", "repo", string.format("Repo generation coroutine failed: %s", tostring(message)))
             self.jobCoroutine = nil
+            self:resetToInitialState()
+            return
         end
     end
 
@@ -670,22 +806,29 @@ function VehicleRepoJob:onUpdate(dtReal, dtSim, dtRaw)
                 local deliveredId = self.vehicleId
                 local repoId = self.repoVehicleID
 
-                local reward = self:calculateReward()
+                local reward, baseReward = self:calculateReward()
                 local rewardText = "You've Dropped Off a " ..  self.vehInfo.Brand .. " " .. self.vehInfo.Name .. "."
                 if reward then
                   rewardText = rewardText .. "\nYou have been paid $" .. tostring(reward)
                 end
 
                 if career_career and career_career.isActive and career_career.isActive() and reward then
-                  career_modules_payment.reward({
+                  local progressionBase = tonumber(baseReward) or reward
+                  local rewardData = {
                     money = { amount = reward },
-                    beamXP = { amount = math.floor(reward / 20) },
-                    labourer = { amount = math.floor(reward / 20) }
-                  }, {
-                    label = "You've Dropped Off a " .. self.vehInfo.Brand .. " " .. self.vehInfo.Name .. ".\nYou have been paid $" .. reward,
+                    beamXP = { amount = math.floor(progressionBase / 20) },
+                    labourer = { amount = math.floor(progressionBase / 20) }
+                  }
+                  if career_modules_difficultyMode and career_modules_difficultyMode.scalePaymentRewardData then
+                    career_modules_difficultyMode.scalePaymentRewardData(rewardData, {includeMoney = false})
+                  end
+                  local paidMoney = (rewardData.money and rewardData.money.amount) or reward
+                  rewardText = "You've Dropped Off a " .. self.vehInfo.Brand .. " " .. self.vehInfo.Name .. ".\nYou have been paid $" .. paidMoney
+                  career_modules_payment.reward(rewardData, {
+                    label = rewardText,
                     tags = {"gameplay", "reward", "laborer"}
                   }, true)
-                --  career_saveSystem.saveCurrent()
+                  career_saveSystem.saveCurrent()
                   if career_modules_inventory and career_modules_inventory.addRepossession and career_modules_inventory.getInventoryIdFromVehicleId then
                     career_modules_inventory.addRepossession(career_modules_inventory.getInventoryIdFromVehicleId(repoId))
                   end
@@ -720,6 +863,7 @@ function VehicleRepoJob:onUpdate(dtReal, dtSim, dtRaw)
                   self.pendingDeliveredDeleteId = deliveredId
                 end
 
+                self:releaseDeliveryReservation()
                 self.isCompleted = true
                 self.reward = reward
                 ui_message(rewardText, 15, "Job Completed", "info")
@@ -771,6 +915,7 @@ function VehicleRepoJob:onUpdate(dtReal, dtSim, dtRaw)
             local velSuccess, vel = pcall(function() return vehicle:getVelocity():length() end)
             if velSuccess and vel and vel > 2 then
                 self.jobStartTime = os.time()
+                self:releasePickupReservation()
                 core_groundMarkers.setPath(self.deliveryLocation.pos, {clearPathOnReachingTarget = true})
                 self.totalDistanceTraveled = self.totalDistanceTraveled + core_groundMarkers.getPathLength()
             end

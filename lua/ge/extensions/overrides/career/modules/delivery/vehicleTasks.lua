@@ -276,6 +276,12 @@ local function getRewardsWithBreakdown(taskData)
     end
   end
 
+  local logisticsSkillXpEarned = tonumber(originalRewards["logistics-delivery"])
+  if not logisticsSkillXpEarned then
+    logisticsSkillXpEarned = tonumber(originalRewards["logistics-vehicleDelivery"]) or tonumber(originalRewards["logistics"]) or 0
+  end
+  local loanerOrgReputationReward = round(math.max(0, logisticsSkillXpEarned))
+
   for organizationId, _ in pairs(taskData.loanerOrganisations or {}) do
     local organization = freeroam_organizations.getOrganization(organizationId)
     local level = organization.reputation.level
@@ -286,19 +292,9 @@ local function getRewardsWithBreakdown(taskData)
       rewards = {money = -organizationCut * originalRewards.money},
       simpleBreakdownType = "loaner",
     }
-    organizationElement.rewards[organizationId.."Reputation"] = 5 + round(taskData.offer.data.originalDistance/1000)
+    organizationElement.rewards[organizationId.."Reputation"] = loanerOrgReputationReward
 
     table.insert(breakdown, organizationElement)
-  end
-
-  local branchMultiplier = career_branches.getLevelRewardMultiplier("logistics")
-  if branchMultiplier > 1 then
-    local level = career_branches.getBranchLevel("logistics")
-    table.insert(breakdown, {
-      label = "Level " .. level .. " Multiplier",
-      rewards = {money = originalRewards.money * branchMultiplier - originalRewards.money},
-      simpleBreakdownType = "branch",
-    })
   end
 
   -- Calculate precision parking and add to breakdown
@@ -330,9 +326,10 @@ local function getRewardsWithBreakdown(taskData)
         end
 
         -- Calculate skill XP reward (same as logistics for vehicle delivery)
-        local skillReward = precisionBonus.skillFlat + (originalRewards["logistics-vehicleDelivery"] or 0) * precisionBonus.skillPercent
+        local skillBaseReward = (originalRewards["logistics-delivery"] or 0) + (originalRewards["logistics-vehicleDelivery"] or 0)
+        local skillReward = precisionBonus.skillFlat + skillBaseReward * precisionBonus.skillPercent
         if skillReward ~= 0 then
-          precisionBreakdown.rewards["logistics-vehicleDelivery"] = (precisionBreakdown.rewards["logistics-vehicleDelivery"] or 0) + math.ceil(skillReward)
+          precisionBreakdown.rewards["logistics-delivery"] = (precisionBreakdown.rewards["logistics-delivery"] or 0) + math.ceil(skillReward)
         end
 
         -- Calculate reputation reward

@@ -98,6 +98,13 @@ local function calculateUnlockInfo(skill, value, level)
   return unlockInfo, maxRequiredValue, hasUnlocks
 end
 
+local function shouldHideSkill(branch, value)
+  if branch.hideUntilProgress or branch.attributeKey == "careerSkills-gambling" then
+    return (tonumber(value) or 0) <= 0
+  end
+  return false
+end
+
 local function getSkillsProgressForUi(branchId)
   local ret = {}
   --dump("getting skills for " .. branchId)
@@ -106,6 +113,7 @@ local function getSkillsProgressForUi(branchId)
     if skill.parentId == branchId then
       local attKey = skill.attributeKey
       local value = career_modules_playerAttributes.getAttributeValue(attKey)
+      if shouldHideSkill(skill, value) then goto continueSkill end
       local level, _, _, min, max = career_branches.calcBranchLevelFromValue(value, skill.id)
       local skData = {
         icon = skill.icon,
@@ -140,6 +148,7 @@ local function getSkillsProgressForUi(branchId)
       --dumpz(skData.unlockInfo,2)
 
       table.insert(ret, skData)
+      ::continueSkill::
     end
   end
   return ret
@@ -206,7 +215,7 @@ local function getFacilityProgress(fac)
 end
 
 local deliverySystemToSkill = {
-  vehicleDelivery = "logistics-vehicleDelivery",
+  vehicleDelivery = "logistics-delivery",
   parcelDelivery = "logistics-delivery",
   trailerDelivery = "logistics-delivery",
   smallDryBulkDelivery = "logistics-delivery",
@@ -273,7 +282,7 @@ local function getFacilityAvailableOrders(fac)
   -- trailers + vehicles
   for _, t in ipairs({
     {key="trailer", icon="smallTrailer", label="Available Trailers", skill="logistics-delivery"},
-    {key="vehicle", icon="keys1",        label="Available Vehicles", skill="logistics-vehicleDelivery"}
+    {key="vehicle", icon="keys1",        label="Available Vehicles", skill="logistics-delivery"}
   }) do
     local amounts = {available = 0, locked = 0}
     for _, item in ipairs(career_modules_delivery_vehicleOfferManager.getAllOfferAtFacilityUnexpired(fac.id)) do
@@ -416,6 +425,7 @@ local function getBranchSkillCardData(branchId)
     if subBranch.parentId == branchId then
       local attKey = subBranch.attributeKey
       local value = career_modules_playerAttributes.getAttributeValue(attKey)
+      if shouldHideSkill(subBranch, value) then goto continueSubBranch end
       local level, _, _, min, max = career_branches.calcBranchLevelFromValue(value, subBranch.id)
       local skillInfo = {
         name = subBranch.name,
@@ -442,6 +452,7 @@ local function getBranchSkillCardData(branchId)
         skillInfo.showProgressAsStars = true
       end
       table.insert(branchInfo.skills, skillInfo)
+      ::continueSubBranch::
     end
   end
   return branchInfo
@@ -501,6 +512,9 @@ local formatDriftSpot = function(ds)
 end
 M.formatDriftSpot = formatDriftSpot
 local function getLandingPageData(pathId)
+  local hiddenLegacyDomains = {
+    logistics = true
+  }
   local data = {
     heading = "ui.career.landingPage.name",
     description = "ui.career.landingPage.description",
@@ -515,7 +529,7 @@ local function getLandingPageData(pathId)
     data.showMilestones = true
     -- Find all domains and determine their target type
     for _, branch in ipairs(branches) do
-      if branch.isDomain then
+      if branch.isDomain and not hiddenLegacyDomains[branch.id] then
         local hasBranches = false
         -- Check children of this domain
         for _, childBranch in ipairs(branches) do
@@ -536,12 +550,16 @@ local function getLandingPageData(pathId)
     -- Find branches for this domain
     for _, branch in ipairs(branches) do
       if branch.parentId == pathId then
-        table.insert(data.branches, {
-          id = branch.id,
-          target = "skillPage",
-          isSkill = branch.isSkill,
-          description = branch.description,
-        })
+        local attKey = branch.attributeKey
+        local bValue = attKey and career_modules_playerAttributes.getAttributeValue(attKey)
+        if not shouldHideSkill(branch, bValue) then
+          table.insert(data.branches, {
+            id = branch.id,
+            target = "skillPage",
+            isSkill = branch.isSkill,
+            description = branch.description,
+          })
+        end
       end
     end
 

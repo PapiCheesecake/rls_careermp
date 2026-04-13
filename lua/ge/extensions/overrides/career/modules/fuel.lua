@@ -352,7 +352,7 @@ local function endTransaction()
   activateSound(gasSoundId, false)
   activateSound(electricSoundId, false)
   if career_career.isAutosaveEnabled() then
-  --  career_saveSystem.saveCurrent()
+    career_saveSystem.saveCurrent()
   else
     career_modules_inventory.updatePartConditions(nil, career_modules_inventory.getCurrentVehicle())
   end

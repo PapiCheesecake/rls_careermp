@@ -6,6 +6,7 @@ local core_vehicles = require('core/vehicles')
 
 local config = {
     baseFare = 600,
+    rewardMultiplier = 0.5,
     tipMultiplier = 20,
     dwellDurationBase = 10,
     stopSettleDelay = 2.5,
@@ -18,7 +19,12 @@ local config = {
     tipPerPassengerMultiplier = 2,
     roughRidePenaltyMultiplier = 10,
     loopBonusFactor = 0.5,
-    stopVelocityThreshold = 0.5
+    stopVelocityThreshold = 0.5,
+    -- Few-stop routes (long legs, limited stops): mileage pay when #stopTriggers < this; $/mile before economy/reward multipliers.
+    limitedStopsRouteMaxStops = 5,
+    payPerMile = 600,
+    metersPerMile = 1609.344,
+    odometerMaxStepMeters = 400
 }
 
 local DEBUG = false
@@ -37,6 +43,7 @@ local totalStopsCompleted = 0
 local routeCooldown = 0
 local currentVehiclePartsTree = nil
 local stopMonitorActive = false
+
 local stopSettleTimer = 0
 local stopSettleDelay = config.stopSettleDelay
 local currentTriggerName = nil
@@ -59,6 +66,8 @@ local stopMarkerObjects = {}
 local stopPerimeterTrigger = nil
 local currentLoanerCut = 0
 local passengerDisplayTimer = 0
+local routeOdometerMeters = 0
+local lastOdometerPos = nil
 
 local isBus
 local initRoute
@@ -680,6 +689,9 @@ local function showNextStopMarker(targetStopIndex)
 end
 
 local function endRoute(reason, payout)
+    routeOdometerMeters = 0
+    lastOdometerPos = nil
+
     currentRouteActive = false
     dwellTimer = nil
     routeInitialized = false
@@ -695,6 +707,7 @@ local function endRoute(reason, payout)
 
     local reputationGain = 0
 
+    local rewardData = nil
     if payout and payout > 0 then
         local loanerCutAmount = 0
         if currentLoanerCut > 0 then
@@ -704,8 +717,29 @@ local function endRoute(reason, payout)
 
         local basePay = accumulatedReward
         local tipsEarned = tipTotal
-
-        reputationGain = math.floor(payout / config.reputationDivisor)
+        local beamXP = math.floor(payout / 10)
+        local busReputation = math.floor(payout / config.reputationDivisor)
+        if career_modules_difficultyMode and career_modules_difficultyMode.scaleFlatRewards then
+            local scaled = {
+                beamXP = beamXP,
+                busWorkReputation = busReputation
+            }
+            career_modules_difficultyMode.scaleFlatRewards(scaled, {includeMoney = false})
+            beamXP = math.max(0, math.floor((tonumber(scaled.beamXP) or beamXP) + 0.5))
+            busReputation = math.max(0, math.floor((tonumber(scaled.busWorkReputation) or busReputation) + 0.5))
+        end
+        reputationGain = busReputation
+        rewardData = {
+            money = {
+                amount = payout
+            },
+            beamXP = {
+                amount = beamXP
+            },
+            busWorkReputation = {
+                amount = busReputation
+            }
+        }
 
         msg = msg .. string.format("\nStops completed: %d\nBase pay:   $%d\nTips:       $%d",
             totalStopsCompleted, basePay, tipsEarned)
@@ -732,19 +766,9 @@ local function endRoute(reason, payout)
     ]])
     end
 
-    if payout and payout > 0 and career_career and career_career.isActive() and career_modules_payment and
+    if rewardData and payout and payout > 0 and career_career and career_career.isActive() and career_modules_payment and
         career_modules_payment.reward then
-        career_modules_payment.reward({
-            money = {
-                amount = payout
-            },
-            beamXP = {
-                amount = math.floor(payout / 10)
-            },
-            busWorkReputation = {
-                amount = reputationGain
-            }
-        }, {
+        career_modules_payment.reward(rewardData, {
             label = string.format("Bus Route Earnings: $%d", payout),
             tags = {"transport", "bus", "gameplay"}
         }, true)
@@ -1102,6 +1126,7 @@ initRoute = function()
 
     currentStopIndex = 1
     consecutiveStops, dwellTimer, accumulatedReward, totalStopsCompleted = 0, nil, 0, 0
+    routeOdometerMeters, lastOdometerPos = 0, nil
     currentRouteActive, routeInitialized, passengersOnboard, routeCooldown = true, true, 0, 0
     tipTotal, roughRide, lastVelocity = 0, 0, nil
 
@@ -1250,20 +1275,36 @@ local function processStop(vehicle, dtSim)
 
             local base = config.baseFare
             local bonusMultiplier = config.bonusMultiplierBase + (consecutiveStops / #stopTriggers) * config.bonusMultiplierFactor
-            local payout = math.floor(base * bonusMultiplier)
+            local stopPayout = math.floor(base * bonusMultiplier)
 
-            if career_economyAdjuster then
-                local multiplier = career_economyAdjuster.getSectionMultiplier("bus") or 1.0
-                payout = math.floor(payout * multiplier + 0.5)
+            local mileagePayout = 0
+            if #stopTriggers < config.limitedStopsRouteMaxStops then
+                local payPerMeter = config.payPerMile / config.metersPerMile
+                mileagePayout = math.floor(routeOdometerMeters * payPerMeter + 0.5)
             end
 
+            local combined = stopPayout + mileagePayout
+            local sectionMultiplier = 1.0
+            local payout = combined
+
+            if career_economyAdjuster then
+                sectionMultiplier = career_economyAdjuster.getSectionMultiplier("bus") or 1.0
+                payout = math.floor(combined * sectionMultiplier + 0.5)
+            end
+            local rewardMultiplier = config.rewardMultiplier or 1
+            payout = math.floor(payout * rewardMultiplier + 0.5)
+
             accumulatedReward = accumulatedReward + payout
+            routeOdometerMeters = 0
+            lastOdometerPos = vehicle:getPosition()
 
             local tipsEarned = 0
             if trueDeboarding > 0 then
                 local avgRough = math.max(0, roughRide / math.max(1, dwellDuration))
                 local tipPerPassenger = math.max(0, config.tipBaseScore - avgRough) * config.tipPerPassengerMultiplier
                 tipsEarned = math.floor(tipPerPassenger * trueDeboarding * config.tipMultiplier)
+                tipsEarned = math.floor(tipsEarned * sectionMultiplier + 0.5)
+                tipsEarned = math.floor(tipsEarned * rewardMultiplier + 0.5)
                 tipTotal = tipTotal + tipsEarned
             end
             print(string.format("[bus] Tips: +%d   TotalTips=%d", tipsEarned, tipTotal))
@@ -1295,16 +1336,17 @@ local function processStop(vehicle, dtSim)
 
                 routeCooldown = config.routeCooldown
                 currentStopIndex = 1
-                
+                lastOdometerPos = nil
+
                 isCalculatingRoute = true
                 routeCalcTimer = 0
                 
                 updateBusControllerDisplay()
                 updateTasklist()
 
-                -- if career_saveSystem and career_saveSystem.saveCurrent then
-                --     career_saveSystem.saveCurrent()
-                -- end
+                if career_saveSystem and career_saveSystem.saveCurrent then
+                    career_saveSystem.saveCurrent()
+                end
 
             else
                 local nextStopIndex = math.min((currentStopIndex or 1) + 1, #stopTriggers)
@@ -1312,6 +1354,11 @@ local function processStop(vehicle, dtSim)
                 print(string.format("[bus] Moving to next stop: index %d, name %s", nextStopIndex, nextStopName))
                 
                 local reputationGain = math.floor(payout / config.reputationDivisor)
+                if career_modules_difficultyMode and career_modules_difficultyMode.scaleFlatRewards then
+                    local previewScaled = { busWorkReputation = reputationGain }
+                    career_modules_difficultyMode.scaleFlatRewards(previewScaled, {includeMoney = false})
+                    reputationGain = math.max(0, math.floor((tonumber(previewScaled.busWorkReputation) or reputationGain) + 0.5))
+                end
                 
                 ui_message(string.format("Proceed to Stop %02d\nBase pay: $%d\nTips: $%d\nTotal tips: $%d\nReputation: +%d",
                     nextStopIndex, payout, tipsEarned, tipTotal, reputationGain), 8, "info", "bus_next")
@@ -1442,6 +1489,17 @@ local function onUpdate(dtReal, dtSim, dtRaw)
 
     lastVelocity = velocity
 
+    if stopTriggers and #stopTriggers < config.limitedStopsRouteMaxStops then
+        local pos = vehicle:getPosition()
+        if lastOdometerPos then
+            local d = pos:distance(lastOdometerPos)
+            if d > 0 and d <= config.odometerMaxStepMeters then
+                routeOdometerMeters = routeOdometerMeters + d
+            end
+        end
+        lastOdometerPos = pos
+    end
+
     processStop(vehicle, dtSim)
 end
 
@@ -1525,6 +1583,8 @@ local function onExtensionUnloaded()
     stopDisplayNames = {}
     routeItems = {}
     currentLoanerCut = 0
+    routeOdometerMeters = 0
+    lastOdometerPos = nil
 
     M.vehicleCapacity = nil
     

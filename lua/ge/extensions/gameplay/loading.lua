@@ -380,9 +380,9 @@ local uiCallbacks = {
     currentState = Config.STATE_IDLE
     Manager.jobOfferSuppressed = true
     triggerPhoneState()
-  --  if career_career and career_career.isActive() and career_saveSystem then
-  --    career_saveSystem.saveCurrent()
-  --  end
+    if career_career and career_career.isActive() and career_saveSystem then
+      career_saveSystem.saveCurrent()
+    end
   end,
   getCompatibleZones = function()
     if #compatibleZones == 0 and Contracts.ContractSystem.activeContract and Contracts.ContractSystem.activeContract.materialTypeName then
@@ -566,9 +566,9 @@ local uiCallbacks = {
     Contracts.completeContract(function(deleteTruck) 
       Manager.cleanupJob(deleteTruck, Config.STATE_IDLE)
       currentState = Config.STATE_IDLE
-      -- if career_career and career_career.isActive() and career_saveSystem then
-      --   career_saveSystem.saveCurrent()
-      -- end
+      if career_career and career_career.isActive() and career_saveSystem then
+        career_saveSystem.saveCurrent()
+      end
     end, Manager.clearProps)
   end,
   onLoadMore = function()

@@ -26,13 +26,6 @@ local filterTags = {
     howTo = {label="How does parcel delivery work?", pages={"delivery/parcelDeliveryHelp"}},
     groupings = {"destinations","ungrouped"},
   }, {
-    value = "propCargo", label = "Prop Cargo", icon = "cardboardBox", type="cargo",
-    shortDescription = "Physically carry parcels as props to their destination. No vehicle containers required.",
-    noContent = "This facility does not offer prop cargo delivery.",
-    cover = "/gameplay/branches/labourer/filterCovers/parcelCover.jpg",
-    howTo = {label="How does parcel delivery work?", pages={"delivery/parcelDeliveryHelp"}},
-    groupings = {"destinations","ungrouped"},
-  }, {
     value = "vehicle", label = "Car Jockey", icon = "keys1", type="cargo",
     shortDescription = "Drive vehicles to repair jobs or bring them to private residences.",
     noContent = "This facility does not offer vehicles for delivery.",
@@ -171,8 +164,6 @@ local function getCardGroupSetsByKey(cardsById, usePlayerCards, playerCargoConta
       groupTags['type_'..card.type] = true
       if card.materialType then
         card.filterTags['material'] = true
-      elseif card.isPropCargo then
-        card.filterTags['propCargo'] = true
       else
         card.filterTags['parcel'] = true
       end
@@ -564,9 +555,6 @@ local function addFilterPlayerData(filterSets, playerGroupSets, playerCargoConta
     filter.noContainers = nil
     if filter.value == "parcel" and storageAmount.parcel == 0 then
       filter.noContainers = true
-    elseif filter.value == "propCargo" then
-      -- propCargo never needs containers — always available
-      filter.noContainers = nil
     elseif filter.value == "material" and (storageAmount.fluid == 0 and storageAmount.dryBulk == 0 and storageAmount.cement == 0 and storageAmount.cash == 0) then
       filter.noContainers = true
     elseif filter.value == "all" and (storageAmount.parcel == 0 and storageAmount.fluid == 0 and storageAmount.dryBulk == 0 and storageAmount.cement == 0 and storageAmount.cash == 0) then
@@ -587,11 +575,6 @@ local function getConfirmButtonFromPlayerCards(cardsById)
         count = #card.ids
       end
       itemCount = itemCount + count
-    -- propCargo facility cards with pending propDelivery transient moves
-    elseif card.isFacilityCard and card.cardType == "parcelGroup"
-       and card.isPropCargo
-       and card.transientMoveCounts and card.transientMoveCounts > 0 then
-      itemCount = itemCount + #card.ids
     end
   end
   return {

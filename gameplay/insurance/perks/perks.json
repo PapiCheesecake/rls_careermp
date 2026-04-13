@@ -10,10 +10,10 @@
       "description" : "insurance.perks.accidentForgivenessAtRenewal.description",
       "valueType" : "unit"
     },
-    "instantRepair": {
-      "intro": "insurance.perks.instantRepair.intro",
-      "description": "insurance.perks.instantRepair.description",
-      "valueType": "boolean"
+    "instantRepair" : {
+      "intro" : "insurance.perks.instantRepair.intro",
+      "description" : "insurance.perks.instantRepair.description",
+      "valueType" : "boolean"
     },
     "fuelDiscount" : {
       "intro" : "insurance.perks.fuelDiscount.intro",
