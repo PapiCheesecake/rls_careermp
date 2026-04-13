@@ -1,6 +1,7 @@
 # rls_careermp
 
 ## Welcome to my conversion of RLS! This makes it possible to use RLS Career Overhaul with StanleyDudek's CareerMP!!
+- ## Undergoing Redevelopment for The Great Rebalance RLS Update
 
 ## This is WIP so expect bugs and missing features, please report them here or in StanleyDudek's Discord.
 - Thanks to demonik631 for fixing the autosave and loaner vehicles!!!
