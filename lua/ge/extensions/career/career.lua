@@ -275,7 +275,7 @@ end
 
 local function createOrLoadCareerAndStart(name, specificAutosave, tutorial)
   log("I","",string.format("Create or Load Career: %s - %s", name, specificAutosave))
-  if career_saveSystem.setSaveSlot(name .. "_rls", specificAutosave) then
+  if career_saveSystem.setSaveSlot(name, specificAutosave) then
     M.tutorialEnabled = tutorial
     if tutorial then
       log("I","","Tutorial for career enabled.")
