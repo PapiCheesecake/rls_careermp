@@ -7,7 +7,7 @@
 - Thanks to demonik631 for fixing the autosave and loaner vehicles!!!
 
 ## CareerMP is a dependency - https://github.com/StanleyDudek/CareerMP
-- Last tested Version: CareerMP v0.0.16
+- Last tested Version: CareerMP v0.0.29
 
 # Installation
 - Zeits Graphics are known for causing UI issues with CareerMP or RLS_MP. If you're having UI issues with either... it's likely that.
@@ -29,6 +29,7 @@ https://medal.tv/games/screen-capture/clips/mj1bIm4TxdSiFGVH-?invite=cr-MSxxQXYs
 1. Open BeamMP-Server (if your hosting).
 2. Open BeamMP-Client.
 3. Join the server, this creates a save for you. Same Goes for rejoining, it loads the save for you.
+4. If you have the issue where you spawn at china town but it wants you to complete the first car purchase. Open the map, select the garage and call a taxi. Or close game, remove save and retry a new save.
 
 # Saves
 - Saves work like CareerMP. however you can create a save with RLS loaded also. Ive not done this yet so any issues let me know.
