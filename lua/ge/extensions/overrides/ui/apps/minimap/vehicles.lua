@@ -1,11 +1,10 @@
 -- This Source Code Form is subject to the terms of the bCDDL, v. 1.1.
 -- If a copy of the bCDDL was not distributed with this
 -- file, You can obtain one at http://beamng.com/bCDDL-1.1.txt
-
+-----
 local M = {}
 
 local layers = require("ui/apps/minimap/layers")
-local clrTransparent = color(0,0,0,0)
 
 -- Vehicle drawing state variables
 local lastPos, lastPos2, pos, fwd, scl = vec3(), vec3(), vec3(), vec3(), vec3()
@@ -83,10 +82,10 @@ local function drawVehicle(pos, fwd, color, size, asCircle, layer)
 
     local borderWidth = math.max(1, math.floor(2 * dpi))
     td:triangle(f.x, f.y, bl.x, bl.y, br.x, br.y, borderWidth, 0, currentStyleColorSet.navBg, currentStyleColorSet.navBg, currentStyleColorSet.navBg, currentStyleColorSet.navBg, 0, layer)
-    td:circle(tmp1.x, tmp1.y, (5*size+2) * dpi, 0, currentStyleColorSet.navBg, currentStyleColorSet.navBg, clrTransparent, clrTransparent, 0, layer)
+    td:circle(tmp1.x, tmp1.y, (5*size+2) * dpi, 0, currentStyleColorSet.navBg, currentStyleColorSet.navBg, 0, 0, 0, layer)
 
     td:triangle(f.x, f.y, bl.x, bl.y, br.x, br.y, 0, 0, color, color, color, color, 0, layer)
-    td:circle(tmp1.x, tmp1.y, 5*size * dpi, 0, color, color, clrTransparent, clrTransparent, 0, layer)
+    td:circle(tmp1.x, tmp1.y, 5*size * dpi, 0, color, color, 0, 0, 0, layer)
   else
     scl = scale*7 * size * dpi
 
@@ -222,9 +221,8 @@ local ignoredTypes = {
 }
 local function drawOtherVehicles(dtReal, dtSim)
   local playerVehId = be:getPlayerVehicleID(0)
-  local traffic = (gameplay_traffic and gameplay_traffic.getTrafficData()) or {}
-  local parking = (gameplay_parking and gameplay_parking.getParkedCarsData()) or {}
-  local policeCars = (gameplay_police and gameplay_police.getPoliceVehicles()) or {}
+  local traffic = gameplay_traffic.getTrafficData()
+  local parking = gameplay_parking.getParkedCarsData()
   local canSwitch = not core_input_actionFilter.isActionBlocked("switch_next_vehicle") and not core_input_actionFilter.isActionBlocked("switch_previous_vehicle")
   for otherVId, otherVeh in activeVehiclesIterator(vehIteratorCtx) do
     if otherVId ~= playerVehId then
@@ -233,9 +231,9 @@ local function drawOtherVehicles(dtReal, dtSim)
         draw = true
       end
 
-      local policeInfo = policeCars[otherVId]
+      local policeCars = gameplay_police.getPoliceVehicles()
       local isActivePoliceCar = false
-      if policeInfo and policeInfo.role and policeInfo.role.targetId == playerVehId and (policeInfo.role.targetPursuitMode or 0) > 0 then
+      if policeCars[otherVId] and policeCars[otherVId].role.targetId == playerVehId and policeCars[otherVId].role.targetPursuitMode > 0 then
         isActivePoliceCar = true
       end
 
@@ -267,7 +265,8 @@ local function drawOtherVehicles(dtReal, dtSim)
       fwd:set(otherVeh:getDirectionVectorXYZ())
       fwd.z = 0
       fwd:normalize()
-      local canUse = (gameplay_walk and not gameplay_walk.isVehicleBlacklisted(otherVId)) or false
+      local policeCars = gameplay_police.getPoliceVehicles()
+      local canUse = not gameplay_walk.isVehicleBlacklisted(otherVId)
       local currentStyleColorSet = ui_apps_minimap_utils.getCurrentStyleColors()
       if not currentStyleColorSet then
         currentStyleColorSet = ui_apps_minimap_utils.colors
@@ -279,14 +278,14 @@ local function drawOtherVehicles(dtReal, dtSim)
       end
 
       local vehLayer = layers.VEHICLES_OTHER
-      if policeInfo then
+      if policeCars[otherVId] then
         vehColor = color(math.sin(os.clock()*5 + otherVId*0.01 )*128+128, 0, math.sin(os.clock()*5+math.pi+otherVId*0.01)*128+128, 255)
         vehLayer = layers.VEHICLES_POLICE
       elseif canUse then
         vehLayer = layers.VEHICLES_USABLE
       end
 
-      drawVehicle(pos, fwd, vehColor, canUse and 0.8 or (policeInfo and 0.8 or 0.5), otherVeh.jbeam == "unicycle", vehLayer)
+      drawVehicle(pos, fwd, vehColor, canUse and 0.8 or (policeCars[otherVId] and 0.8 or 0.5), otherVeh.jbeam == "unicycle", vehLayer)
       ::continue::
     end
   end

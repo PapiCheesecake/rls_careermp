@@ -875,9 +875,10 @@ local function completeDelivery()
     else
         log('W', 'beamEats', 'career_modules_payment not available, skipping reward')
     end
-    if career_career.isAutosaveEnabled() then
-        career_saveSystem.saveCurrent()
-    end
+    -- Prevents player desync
+    -- if career_career.isAutosaveEnabled() then
+    --     career_saveSystem.saveCurrent()
+    -- end
 end
 
 local function dismissSummary()

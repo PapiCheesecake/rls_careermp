@@ -873,7 +873,8 @@ function M.finishOfferClear()
   sr.nextGenAt = now + math.max(0.5, tonumber(cfg.defaultOfferRefreshMinutes) or 12)
   M.clearRuntime()
   gameplay_events_freContracts_state.refreshMaintenanceSchedule(now)
-  career_saveSystem.saveCurrent()
+  -- Prevents player desync
+  --career_saveSystem.saveCurrent()
   gameplay_events_freContracts_ui.emitUiStateUpdate("sanctioned_race_end")
 end
 

@@ -18,7 +18,6 @@ end
 
 local clrNavBg = color(255,255,255,255)
 local clrNavFg = color(0,0.4*255,1*255,255)
-local clrTransparent = color(0,0,0,0)
 
 local blendDistance = 75
 local function getRouteColor(distance)
@@ -48,11 +47,11 @@ local function drawRoute(route, td, dpi)
     ui_apps_minimap_utils.worldToMapXYZ(routePath[i], route[i].pos)
   end
   for i = 1, routeCurrentLength-1 do
-    td:lineRoundEnd(routePath[i].x, routePath[i].y, routePath[i+1].x, routePath[i+1].y, 4*dpi, 4*dpi, 0, clrNavBg, clrNavBg, clrTransparent, clrTransparent, 0, layers.ROUTE_BG)
+    td:lineRoundEnd(routePath[i].x, routePath[i].y, routePath[i+1].x, routePath[i+1].y, 4*dpi, 4*dpi, 0, clrNavBg, clrNavBg, 0, 0, 0, layers.ROUTE_BG)
   end
   for i = 1, routeCurrentLength-1 do
     local color = getRouteColor(((startDistance - route[i].distToTarget) + (startDistance - route[i+1].distToTarget))/2)
-    td:lineRoundEnd(routePath[i].x, routePath[i].y, routePath[i+1].x, routePath[i+1].y, 2*dpi, 2*dpi, 0, color, color, clrTransparent, clrTransparent, 0, layers.ROUTE_FG)
+    td:lineRoundEnd(routePath[i].x, routePath[i].y, routePath[i+1].x, routePath[i+1].y, 2*dpi, 2*dpi, 0, color, color, 0, 0, 0, layers.ROUTE_FG)
   end
 
 end

@@ -7,7 +7,6 @@ local M = {}
 -- Road drawing state variables
 local kdTree = require('kdtreebox2d')
 local layers = require("ui/apps/minimap/layers")
-local clrTransparent = color(0,0,0,0)
 local kdNodes = nil
 local links = {}
 local hasRoads = false
@@ -77,8 +76,8 @@ M.drawRoads = function(p, radius, td, debugSettings, camPos, scale, dpi  )
       local s2X, s2Y = worldToMapXY(links[lIdx+2], links[lIdx+3])
       local clr = links[lIdx+4]
 
-      tdlineRoundEnd(td, s1X, s1Y, s2X, s2Y, constantWidthBg, constantWidthBg, 0, roadBgTransparentBlack, roadBgTransparentBlack, clrTransparent, clrTransparent, 0, layerBG)
-      tdlineRoundEnd(td, s1X, s1Y, s2X, s2Y, constantWidth, constantWidth, 0, clr, clr, clrTransparent, clrTransparent, 0, layerFG)
+      tdlineRoundEnd(td, s1X, s1Y, s2X, s2Y, constantWidthBg, constantWidthBg, 0, roadBgTransparentBlack, roadBgTransparentBlack, 0, 0, 0, layerBG)
+      tdlineRoundEnd(td, s1X, s1Y, s2X, s2Y, constantWidth, constantWidth, 0, clr, clr, 0, 0, 0, layerFG)
     end
 
     if p then p:add("Roads") end

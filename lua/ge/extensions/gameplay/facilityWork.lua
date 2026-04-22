@@ -1455,9 +1455,10 @@ local function endShiftCleanup()
                 tags = {"facilityWork", "gameplay"}
             }, true)
         end
-        if career_saveSystem and career_saveSystem.saveCurrent then
-            career_saveSystem.saveCurrent()
-        end
+        -- Prevents player desync
+        -- if career_saveSystem and career_saveSystem.saveCurrent then
+        --     career_saveSystem.saveCurrent()
+        -- end
         sessionTotalPay = displayPay
         sessionTotalRep = displayRep
     end

@@ -20,7 +20,7 @@ local autosaveEnabled = true
 
 local careerActive = false
 local careerModules = {}
-local boughtStarterVehicle
+local boughtStarterVehicle = false
 local organizationInteraction = {}
 local switchLevel = nil
 local isNewSaveFlag = false
@@ -475,7 +475,7 @@ local function createOrLoadCareerAndStart(name, specificAutosave, tutorial, hard
         log("I","","Hardcore: starting map locked to West Coast USA.")
       end
 
-      activateCareer(true, mapToUse)
+      activateCareer(false, mapToUse)
     end
   end)
   
@@ -738,7 +738,7 @@ local function formatSaveSlotForUi(saveSlot)
   if career_career.isActive() and currentSaveSlot == saveSlot then
 
     -- current save slot
-    data.tutorialActive = false
+    data.tutorialActive = career_modules_linearTutorial.isLinearTutorialActive()
     data.money = career_modules_playerAttributes.getAttribute("money")
     data.beamXP = career_modules_playerAttributes.getAttribute("beamXP")
     data.vouchers = career_modules_playerAttributes.getAttribute("vouchers")
@@ -868,7 +868,10 @@ end
 
 local function onClientEndMission(levelPath)
   if not careerActive then return end
-  deactivateCareer()
+  local levelNameToLoad = path.levelFromPath(levelPath)
+  if levelNameToLoad == levelName then
+    deactivateCareer()
+  end
 end
 
 local function onSerialize()
@@ -889,35 +892,35 @@ end
 local function sendCurrentSaveSlotName()
   guihooks.trigger("currentSaveSlotName", {saveSlot = career_saveSystem.getCurrentSaveSlot()})
 end
-
-local function launchMostRecentCareer()
-  local allSaveSlots = career_saveSystem.getAllSaveSlots()
-  if tableSize(allSaveSlots) == 0 then
-    log("W", "", "No career save slots found")
-    return false
-  end
-
-  local mostRecentSlot = nil
-  local mostRecentDate = "0"
-
-  for _, slotName in ipairs(allSaveSlots) do
-    local _, saveDate = career_saveSystem.getAutosave(slotName, false)
-    if saveDate and saveDate ~= "0" and saveDate ~= "A" then
-      if saveDate > mostRecentDate then
-        mostRecentDate = saveDate
-        mostRecentSlot = slotName
-      end
-    end
-  end
-
-  if not mostRecentSlot then
-    log("W", "", "No valid career saves found")
-    return false
-  end
-
-  log("I", "", "Launching most recent career: " .. mostRecentSlot)
-  return createOrLoadCareerAndStart(mostRecentSlot)
-end
+-- temp disable to test for CareerMP Save system
+-- local function launchMostRecentCareer()
+--   local allSaveSlots = career_saveSystem.getAllSaveSlots()
+--   if tableSize(allSaveSlots) == 0 then
+--     log("W", "", "No career save slots found")
+--     return false
+--   end
+-- 
+--   local mostRecentSlot = nil
+--   local mostRecentDate = "0"
+-- 
+--   for _, slotName in ipairs(allSaveSlots) do
+--     local _, saveDate = career_saveSystem.getAutosave(slotName, false)
+--     if saveDate and saveDate ~= "0" and saveDate ~= "A" then
+--       if saveDate > mostRecentDate then
+--         mostRecentDate = saveDate
+--         mostRecentSlot = slotName
+--       end
+--     end
+--   end
+-- 
+--   if not mostRecentSlot then
+--     log("W", "", "No valid career saves found")
+--     return false
+--   end
+-- 
+--   log("I", "", "Launching most recent career: " .. mostRecentSlot)
+--   return createOrLoadCareerAndStart(mostRecentSlot)
+-- end
 
 local function onAnyMissionChanged(state, mission)
   if not careerActive then return end
@@ -971,7 +974,9 @@ local function getAdditionalMenuButtons()
   else
     table.insert(ret, {label = "Map", luaFun = "freeroam_bigMapMode.enterBigMap({instant=true})"})
   end
-  table.insert(ret, {label = "Progress", luaFun = "guihooks.trigger('ChangeState', {state = 'domainSelection'})", showIndicator = career_modules_milestones_milestones.unclaimedMilestonesCount() > 0})
+  if not career_modules_linearTutorial.isLinearTutorialActive() and M.hasBoughtStarterVehicle() then
+    table.insert(ret, {label = "Progress", luaFun = "guihooks.trigger('ChangeState', {state = 'domainSelection'})", showIndicator = career_modules_milestones_milestones.unclaimedMilestonesCount() > 0})
+  end
   if career_modules_vehiclePerformance.isTestInProgress() then
     table.insert(ret, {label = "Cancel Certification", luaFun = "career_modules_vehiclePerformance.cancelTest()", showIndicator = true})
   end
@@ -988,9 +993,10 @@ end
 
 local function onWorldReadyState(state)
   if state == 2 and switchLevel then
-    if not careerActive then
-      activateCareer()
-    end
+    -- Temp disabled for CareerMP
+    -- if not careerActive then
+    --   activateCareer()
+    -- end
     switchLevel = nil
   end
 end
@@ -1015,6 +1021,14 @@ local function onSaveFinished()
       server.fadeoutLoadingScreen()
     end)
   end
+end
+
+local function onExtensionLoaded()
+	log('W', 'CareerMP', 'careerMP LOADED!')
+end
+
+local function onExtensionUnloaded()
+  log('W', 'CareerMP', 'careerMP UNLOADED!')
 end
 
 M.onSaveFinished = onSaveFinished
@@ -1055,5 +1069,10 @@ M.onCheatsModeChanged = onCheatsModeChanged
 
 M.sendCurrentSaveSlotName = sendCurrentSaveSlotName
 M.launchMostRecentCareer = launchMostRecentCareer
+
+M.onExtensionLoaded = onExtensionLoaded
+M.onExtensionUnloaded = onExtensionUnloaded
+
+M.onInit = function() setExtensionUnloadMode(M, 'manual') end
 
 return M

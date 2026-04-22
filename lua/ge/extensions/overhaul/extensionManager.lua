@@ -20,7 +20,7 @@ local function checkVersion()
     return true
 end
 
--- Disabled the deactivation of BeamMP (for clear reasons)
+-- Re enabled BeamMP
 -- local function deactivateBeamMP()
 --     local beammp = core_modmanager.getMods()["multiplayerbeammp"]
 --     if beammp then
@@ -118,7 +118,8 @@ local function unloadAllExtensions()
 end
 
 local function startup()
-    deactivateBeamMP()
+    -- Re enabled BeamMP
+    -- deactivateBeamMP()
 
     setExtensionUnloadMode("overhaul_overrideManager", "manual")
     extensions.load("overhaul_overrideManager")

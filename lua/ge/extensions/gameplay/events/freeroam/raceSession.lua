@@ -726,7 +726,8 @@ function M.payoutRace(completedLapTime)
                 message = message .. string.format("\nDiscipline XP: %d | Reward: $%.2f", totalDisciplineXp, reward)
                 hudMoney = reward
             end
-            career_saveSystem.saveCurrent()
+            -- Prevents player desync
+            --career_saveSystem.saveCurrent()
         end
     end
 
@@ -967,7 +968,8 @@ function M.payoutDragRace(raceName, finishTime, finishSpeed, vehId)
         end
         hudMoney = reward
     end
-    career_saveSystem.saveCurrent()
+    -- Prevents player desync
+    --career_saveSystem.saveCurrent()
     notifyFreRaceCompleted(raceName, raceData, raceData.label, finishTime, vehId, completionMeta)
     if M.raceHudApplies(raceData) and frh.shown then
         sess().maxSpeed = math.max(sess().maxSpeed or 0, finishSpeed)

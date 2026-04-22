@@ -8,7 +8,6 @@
 local M = {}
 M.dependencies = {"ui_apps_minimap_topomap", "ui_apps_minimap_additionalInfo", "ui_apps_minimap_route", "ui_apps_minimap_utils", "ui_apps_minimap_roads", "ui_apps_minimap_vehicles", "gameplay_playmodeMarkers"}
 local layers = require("ui/apps/minimap/layers")
-local clrTransparent = color(0,0,0,0)
 M.onInit = function()
   setExtensionUnloadMode(M, "manual")
   M.onMinimapSettingsChanged()
@@ -318,7 +317,7 @@ local function drawMinimap(sizeX, sizeY, dtReal, dtSim)
 
   if debugSettings.draw100m then
     local w = 20
-    td:circle(width/2 + offsetX,height/2 + offsetY, 100/scale-w, w, clrTransparent, clrTransparent, color(255,255,255,0),color(255,255,255,250), 0, layers.GAMEPLAY_MARKERS)
+    td:circle(width/2 + offsetX,height/2 + offsetY, 100/scale-w, w, 0, 0, color(255,255,255,0),color(255,255,255,250), 0, layers.GAMEPLAY_MARKERS)
     if p then p:add("100mRadius") end
   end
 
@@ -419,7 +418,7 @@ local function draw(dtReal, dtSim)
   im.PushStyleColor1(im.Col_BorderShadow, debugSettings.drawBounds and im.GetColorU322(im.ImVec4(0,0,0,0.25)) or transparent)
   im.PushStyleVar2(im.StyleVar_WindowPadding, padding)
   if p then p:add("Canvas and window setup") end
-  if im.Begin("SDF Minimap",nil, bit.bor(im.WindowFlags_NoScrollbar, im.WindowFlags_NoScrollWithMouse, im.WindowFlags_NoTitleBar, im.WindowFlags_NoResize, im.WindowFlags_NoMove, im.WindowFlags_NoInputs)) then
+  if im.Begin("SDF Minimap",nil, bit.bor(im.WindowFlags_NoScrollbar, im.WindowFlags_NoScrollWithMouse, im.WindowFlags_NoTitleBar, im.WindowFlags_NoResize, im.WindowFlags_NoMove, im.WindowFlags_NoInputs, im.WindowFlags_Modal)) then
 
     local cp = im.GetCursorPos()
     local size = im.GetContentRegionAvail()
@@ -577,21 +576,21 @@ end
 M.drawDebugOverlay = function()
   local texWidth, texHeight = width + bufferLeft + bufferRight, height + bufferTop + bufferBottom
 
-  td:circle(0,0, 5,5, clrTransparent, clrTransparent, color(0,255,0,255), color(0,255,0,255), 0, layers.DEBUG)
-  td:circle(texWidth ,0, 5,5, clrTransparent, clrTransparent, color(0,255,0,255), color(0,255,0,255), 0, layers.DEBUG)
-  td:circle(0,texHeight , 5,5, clrTransparent, clrTransparent, color(0,255,0,255), color(0,255,0,255), 0, layers.DEBUG)
-  td:circle(texWidth ,texHeight , 5,5, clrTransparent, clrTransparent, color(0,255,0,255), color(0,255,0,255), 0, layers.DEBUG)
+  td:circle(0,0, 5,5, 0, 0, color(0,255,0,255), color(0,255,0,255), 0, layers.DEBUG)
+  td:circle(texWidth ,0, 5,5, 0, 0, color(0,255,0,255), color(0,255,0,255), 0, layers.DEBUG)
+  td:circle(0,texHeight , 5,5, 0, 0, color(0,255,0,255), color(0,255,0,255), 0, layers.DEBUG)
+  td:circle(texWidth ,texHeight , 5,5, 0, 0, color(0,255,0,255), color(0,255,0,255), 0, layers.DEBUG)
 
 
-  td:circle(bufferLeft ,bufferTop, 5,5, clrTransparent, clrTransparent, color(255,255,255,255), color(255,255,255,255), 0, layers.DEBUG)
-  td:circle(width + bufferLeft ,bufferTop, 5,5, clrTransparent, clrTransparent, color(255,255,255,255), color(255,255,255,255), 0, layers.DEBUG)
-  td:circle(bufferLeft ,height + bufferTop, 5,5, clrTransparent, clrTransparent, color(255,255,255,255), color(255,255,255,255), 0, layers.DEBUG)
-  td:circle(width + bufferLeft ,height + bufferTop, 5,5, clrTransparent, clrTransparent, color(255,255,255,255), color(255,255,255,255), 0, layers.DEBUG)
+  td:circle(bufferLeft ,bufferTop, 5,5, 0, 0, color(255,255,255,255), color(255,255,255,255), 0, layers.DEBUG)
+  td:circle(width + bufferLeft ,bufferTop, 5,5, 0, 0, color(255,255,255,255), color(255,255,255,255), 0, layers.DEBUG)
+  td:circle(bufferLeft ,height + bufferTop, 5,5, 0, 0, color(255,255,255,255), color(255,255,255,255), 0, layers.DEBUG)
+  td:circle(width + bufferLeft ,height + bufferTop, 5,5, 0, 0, color(255,255,255,255), color(255,255,255,255), 0, layers.DEBUG)
 
-  td:circle(bufferLeft/2, texHeight/2, bufferLeft/2, 1, clrTransparent, clrTransparent, color(255,0,0,255), color(255,0,0,255), 0, layers.DEBUG)
-  td:circle(texWidth/2,bufferTop/2, bufferTop/2, 1, clrTransparent, clrTransparent, color(255,0,0,255), color(255,0,0,255), 0, layers.DEBUG)
-  td:circle(texWidth-bufferRight/2,texHeight/2, bufferRight/2, 1, clrTransparent, clrTransparent, color(255,0,0,255), color(255,0,0,255), 0, layers.DEBUG)
-  td:circle(texWidth/2,texHeight-bufferBottom/2, bufferBottom/2, 1, clrTransparent, clrTransparent, color(255,0,0,255), color(255,0,0,255), 0, layers.DEBUG)
+  td:circle(bufferLeft/2, texHeight/2, bufferLeft/2, 1, 0, 0, color(255,0,0,255), color(255,0,0,255), 0, layers.DEBUG)
+  td:circle(texWidth/2,bufferTop/2, bufferTop/2, 1, 0, 0, color(255,0,0,255), color(255,0,0,255), 0, layers.DEBUG)
+  td:circle(texWidth-bufferRight/2,texHeight/2, bufferRight/2, 1, 0, 0, color(255,0,0,255), color(255,0,0,255), 0, layers.DEBUG)
+  td:circle(texWidth/2,texHeight-bufferBottom/2, bufferBottom/2, 1, 0, 0, color(255,0,0,255), color(255,0,0,255), 0, layers.DEBUG)
 
   im.Text(string.format("Buffers: %d, %d, %d, %d", bufferLeft, bufferRight, bufferTop, bufferBottom))
   im.Text(string.format("Width: %d, Height: %d", width, height))

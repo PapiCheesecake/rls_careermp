@@ -1344,9 +1344,10 @@ local function processStop(vehicle, dtSim)
                 updateBusControllerDisplay()
                 updateTasklist()
 
-                if career_saveSystem and career_saveSystem.saveCurrent then
-                    career_saveSystem.saveCurrent()
-                end
+                -- Prevents player desync
+                --if career_saveSystem and career_saveSystem.saveCurrent then
+                --    career_saveSystem.saveCurrent()
+                --end
 
             else
                 local nextStopIndex = math.min((currentStopIndex or 1) + 1, #stopTriggers)

@@ -15,7 +15,6 @@ local clrNavBgBlack = color(70,70,70,255)
 local clrGridWhite = color(160,160,160,255)
 local clrNavBg = color(255,255,255,255)
 local clrNavFg = color(0,0.4*255,1*255,255)
-local clrTransparent = color(0,0,0,0)
 
 -- State variables that need to be set by the main minimap
 local width, height
@@ -90,9 +89,6 @@ local function worldToMapXYZ(target, source)
   x = halfWidthWithOffset  + (tX * camFwd.x + y * camRight.x )
   y = halfHeightWithOffset - (tX * camFwd.y + y * camRight.y)
 
-  if not (x >= -1e6 and x <= 1e6 and y >= -1e6 and y <= 1e6) then
-    x, y = halfWidthWithOffset, halfHeightWithOffset
-  end
   target:set(x, y,0)
 end
 
@@ -104,9 +100,6 @@ local function worldToMapXY(x,y )
   x = halfWidthWithOffset  + (tX * camFwd.x + y * camRight.x )
   y = halfHeightWithOffset - (tX * camFwd.y + y * camRight.y)
 
-  if not (x >= -1e6 and x <= 1e6 and y >= -1e6 and y <= 1e6) then
-    x, y = halfWidthWithOffset, halfHeightWithOffset
-  end
   return x, y
 end
 
@@ -314,7 +307,7 @@ local drawEdgePointer = function(pos, fill, strikeClr, radius, maxDistance)
   td:circle(intersectionLocal.x, intersectionLocal.y, circleRadius, 1*M.dpi, clrNavBg, clrNavBg, strikeColor, strikeColor, 0, layers.ROUTE_POINTER)
   td:triangle(tip.x, tip.y, side1.x, side1.y, side2.x, side2.y, 2*M.dpi, 0, clrNavBg, clrNavBg, clrNavBg, clrNavBg, 0, layers.ROUTE_POINTER)
 
-  td:circle(intersectionLocal.x, intersectionLocal.y, circleRadius-2*M.dpi, 0, fill or fillColor, fill or fillColor, clrTransparent, clrTransparent, 0, layers.ROUTE_POINTER)
+  td:circle(intersectionLocal.x, intersectionLocal.y, circleRadius-2*M.dpi, 0, fill or fillColor, fill or fillColor, 0, 0, 0, layers.ROUTE_POINTER)
   td:triangle(tip.x, tip.y, side1.x, side1.y, side2.x, side2.y, 0, 0, fill or fillColor, fill or fillColor, fill or fillColor, fill or fillColor, 0, layers.ROUTE_POINTER)
   return true
 end
